@@ -10,6 +10,7 @@
   "timezone":             "UTC",
 
   "notes_file":           "",
+  "vault_dir":            "",
 
   "server_prefix_local":  "",
   "server_prefix_remote": ""

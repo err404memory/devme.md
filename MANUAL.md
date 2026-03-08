@@ -165,11 +165,11 @@ Notes are stored in `~/.ash/file-notes.json` (configurable via `notes_file`). Th
 
 ## Status
 
-<!-- pulled from project.md, or write your own -->
+_No status set._
 
 ## Next Steps
 
-<!-- pulled from project.md, or write your own -->
+_No next steps defined._
 
 ---
 
@@ -198,7 +198,7 @@ project-name/
 
 ## Session Log
 
-<!-- append session notes here -->
+<!-- Auto-appended by session-close on terminal exit -->
 ```
 
 **Sections maintained automatically by the CLI:** Navigation, Directory, AI Notes, Change Log.

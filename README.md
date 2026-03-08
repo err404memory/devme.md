@@ -277,6 +277,28 @@ If your filesystem is mounted across machines at different paths (e.g. a server 
 
 ---
 
+## Changelog
+
+### 2026-03-08
+
+**Session auto-logging pipeline** — added `hooks/` with 7 scripts: `session-close` (bash EXIT trap), `parse-ai-session` (Claude Code JSONL → structured summary), `parse-ghostty-session` (terminal log → structured summary), `update-session-docs` (appends summaries to companion files), `tmux-start-log` (tmux pipe-pane logging), `ash-init` and `ash-open` (Dolphin service menu wrappers). Every terminal session is now automatically summarized and written into the Session Log of the relevant companion file.
+
+**`ash rm`** — new subcommand removes a directory from the global mesh index. `--delete` flag also removes the companion file from disk.
+
+**Visible status placeholders** — freshly initialized companion files now show `_No status set._` and `_No next steps defined._` instead of invisible HTML comments that rendered as blank cards.
+
+**Sort button** — toggles between `A–Z` and `Tree` labels, making the action clear in both states.
+
+**`_upgrade_file`** — corrected return type annotation from `-> None` to `-> bool`.
+
+**README** — full rewrite: corrected CLI command names, added sticky note concept framing, configurable filename explanation, companion file format example, whatdoing sync section, multi-device path config, roadmap, and screenshot placeholders.
+
+**MANUAL.md** — added full onboarding manual covering installation, configuration, first run, daily workflow, annotations, companion file format, whatdoing integration, multi-device setup, and troubleshooting.
+
+**`config.example.json`** — added example config file with all supported keys and inline instructions.
+
+---
+
 ## License
 
 MIT
