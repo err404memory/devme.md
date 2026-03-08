@@ -1,0 +1,16 @@
+{
+  "_instructions": "Copy this file to ~/.ash/config.json and fill in your values. Keys starting with _ are ignored by the CLI.",
+
+  "username":             "yourname",
+  "filename":             "me.md",
+  "hub_label":            "My Context Hub",
+  "hub_dir":              "~/.ash",
+  "editor":               "code",
+  "accent_color":         "#7b96e8",
+  "timezone":             "UTC",
+
+  "notes_file":           "",
+
+  "server_prefix_local":  "",
+  "server_prefix_remote": ""
+}
