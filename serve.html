@@ -1843,7 +1843,7 @@ document.getElementById('sb-search').addEventListener('input', () => renderMesh(
 document.getElementById('sort-btn').addEventListener('click', () => {
   sortAlpha = !sortAlpha;
   const btn = document.getElementById('sort-btn');
-  btn.textContent = sortAlpha ? 'A–Z ✓' : 'A–Z';
+  btn.textContent = sortAlpha ? 'Tree' : 'A–Z';
   btn.classList.toggle('active', sortAlpha);
   renderMesh(currentItems());
 });

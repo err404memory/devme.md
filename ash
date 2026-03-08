@@ -812,8 +812,8 @@ def build_template(
         next_steps_body = overview.get("next_steps", "<!-- What needs to happen next? -->")
         sync_note = f"\n| {ts(now)} | Synced from `_OVERVIEW.md` |"
     else:
-        status_body = "<!-- What's the current state of this project? -->"
-        next_steps_body = "<!-- What needs to happen next? -->"
+        status_body = "_No status set._"
+        next_steps_body = "_No next steps defined._"
         sync_note = ""
 
     return f"""# {project_name}
@@ -1008,7 +1008,7 @@ def cmd_upgrade(args):
             print(f"Already current: {ash_path}")
 
 
-def _upgrade_file(ash_path: Path) -> None:
+def _upgrade_file(ash_path: Path) -> bool:
     """Apply structural upgrades to a single ash.md in-place."""
     now = datetime.now()
     content = ash_path.read_text()
@@ -1351,6 +1351,38 @@ def cmd_serve(args):
         print('\nStopped.')
 
 
+# ── Subcommand: rm ────────────────────────────────────────────────────────────
+
+def cmd_rm(args):
+    """Remove a companion file from the global index (and optionally delete it)."""
+    target   = Path(args.path).expanduser().resolve()
+    ash_path = target / MD_FILE if target.is_dir() else target
+
+    if not GLOBAL_ASH.exists():
+        print("No global index found.", file=sys.stderr)
+        sys.exit(1)
+
+    content = GLOBAL_ASH.read_text()
+    if str(ash_path) not in content:
+        print(f"Not registered in global index: {ash_path}", file=sys.stderr)
+        sys.exit(1)
+
+    # Remove every line in the global file that references this path
+    lines     = content.splitlines()
+    new_lines = [l for l in lines if str(ash_path) not in l]
+    GLOBAL_ASH.write_text("\n".join(new_lines) + "\n")
+    print(f"Removed from index: {ash_path}")
+
+    if args.delete:
+        if ash_path.exists():
+            ash_path.unlink()
+            print(f"Deleted: {ash_path}")
+        else:
+            print(f"File not found (already gone): {ash_path}")
+    else:
+        print(f"Companion file kept at {ash_path}  (use --delete to remove it from disk too)")
+
+
 # ── Entry point ───────────────────────────────────────────────────────────────
 
 def main():
@@ -1384,6 +1416,10 @@ def main():
 
     sub.add_parser("refresh", help="Refresh navigation in all registered ash.md files")
 
+    rm_p = sub.add_parser("rm", help="Remove a companion file from the global index")
+    rm_p.add_argument("path", nargs="?", default=".", help="Directory or companion file path (default: .)")
+    rm_p.add_argument("--delete", action="store_true", help="Also delete the companion file from disk")
+
     serve_p = sub.add_parser("serve", help="Start local web server for the ash.md mesh")
     serve_p.add_argument("--port", type=int, default=7272, help="Port to serve on (default: 7272)")
     serve_p.add_argument("--no-browser", action="store_true", help="Don't open browser automatically")
@@ -1403,6 +1439,8 @@ def main():
         cmd_watch(args)
     elif args.command == "refresh":
         cmd_refresh(args)
+    elif args.command == "rm":
+        cmd_rm(args)
     elif args.command == "serve":
         cmd_serve(args)
 

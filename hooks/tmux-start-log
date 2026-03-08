@@ -1,0 +1,38 @@
+#!/bin/bash
+# tmux-start-log — start pipe-pane logging for a new tmux window/pane.
+# Called automatically by tmux hooks after-new-window and after-split-window.
+#
+# Install: copy to ~/.local/bin/tmux-start-log and chmod +x
+# Activate: add to ~/.tmux.conf:
+#   set-hook -g after-new-window    'run "~/.local/bin/tmux-start-log #{session_name} #{window_index} #{pane_id}"'
+#   set-hook -g after-split-window  'run "~/.local/bin/tmux-start-log #{session_name} #{window_index} #{pane_id}"'
+#
+# Usage: tmux-start-log <session_name> <window_index> <pane_id>
+#
+# pane_id uses tmux's global unique pane ID format (%N) rather than the
+# per-window pane index, because #{pane_index} is unreliable in hook context.
+
+SESSION="$1"
+WINDOW="$2"
+PANE_ID="$3"   # e.g. %5
+
+if [ -z "$SESSION" ] || [ -z "$WINDOW" ] || [ -z "$PANE_ID" ]; then
+    echo "Usage: tmux-start-log <session> <window> <pane_id>" >&2
+    exit 1
+fi
+
+LOGDIR="$HOME/.logs/terminal/$(date +%Y-%m)"
+mkdir -p "$LOGDIR"
+
+# Sanitize pane_id: tmux pipe-pane interprets % as a format specifier in the
+# shell command string, so %9 → garbage in filenames. Replace % with p.
+SAFE_PANE_ID="${PANE_ID//%/p}"   # e.g. %9 → p9
+
+LOGFILE="$LOGDIR/$(date +%Y-%m-%d)-${SESSION}-w${WINDOW}-${SAFE_PANE_ID}.log"
+
+# Header so you know when this pane started
+printf '[%s] session=%s window=%s pane=%s\n' \
+    "$(date -Iseconds)" "$SESSION" "$WINDOW" "$PANE_ID" >> "$LOGFILE"
+
+# Pipe all terminal OUTPUT to the log. Input (keystrokes, passwords) is not captured.
+tmux pipe-pane -t "$PANE_ID" -o "cat >> '$LOGFILE'"

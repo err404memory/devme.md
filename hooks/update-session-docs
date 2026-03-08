@@ -1,0 +1,259 @@
+#!/usr/bin/env python3
+"""
+update-session-docs — append session summaries to companion files and project CLAUDE.md.
+
+Usage:
+  update-session-docs --summary <text> --cwd <path> --tool <name> --date <ISO>
+
+Called automatically by parse-ai-session and parse-ghostty-session after each
+session close. All writes are append-only — existing content is never modified.
+
+Output locations:
+  <hub_dir>/<filename>   — global context hub (created if missing)
+  <cwd>/<filename>       — per-project companion file (created if missing)
+  <cwd>/CLAUDE.md        — brief last-session note appended (if file exists)
+
+Install: copy to ~/.local/bin/update-session-docs and chmod +x
+
+Config: reads ~/.ash/config.json for filename, hub_dir, and hub_label.
+"""
+
+import argparse
+import json
+import re
+import sys
+from datetime import datetime
+from pathlib import Path
+
+
+# ── Config ────────────────────────────────────────────────────────────────────
+
+def _load_config() -> dict:
+    defaults = {
+        "filename":   "ash.md",
+        "hub_dir":    "~/.ash",
+        "hub_label":  "Personal Context Hub",
+        "username":   "Ash",
+    }
+    cfg_path = Path.home() / ".ash" / "config.json"
+    if cfg_path.exists():
+        try:
+            loaded = json.loads(cfg_path.read_text())
+            defaults.update({k: v for k, v in loaded.items() if k in defaults})
+        except Exception:
+            pass
+    return defaults
+
+CFG       = _load_config()
+ASH_DIR   = Path(CFG["hub_dir"]).expanduser()
+MD_FILE   = CFG["filename"]
+GLOBAL_ASH = ASH_DIR / MD_FILE
+
+# Directories we will never write a companion file into
+_BLOCKED_DIRS = {
+    Path.home(),
+    Path("/"),
+    Path("/etc"),
+    Path("/usr"),
+    Path("/bin"),
+    Path("/sbin"),
+    Path("/boot"),
+    Path("/sys"),
+    Path("/proc"),
+}
+
+
+# ── Helpers ───────────────────────────────────────────────────────────────────
+
+def parse_args():
+    p = argparse.ArgumentParser()
+    p.add_argument("--summary", required=True)
+    p.add_argument("--cwd",     required=True)
+    p.add_argument("--tool",    required=True)
+    p.add_argument("--date",    required=True)
+    return p.parse_args()
+
+
+def extract_takeaway(summary: str) -> str:
+    """Pull the Takeaway section from a parse-ai-session summary, or first sentence."""
+    m = re.search(r"##\s*Takeaway\s*\n(.+?)(?:\n##|\Z)", summary, re.DOTALL)
+    if m:
+        lines = [l.strip() for l in m.group(1).strip().splitlines() if l.strip()]
+        return lines[0] if lines else ""
+    for line in summary.splitlines():
+        line = line.strip()
+        if line and not line.startswith("#"):
+            return line[:120]
+    return ""
+
+
+def session_block(date_str: str, tool: str, summary: str) -> str:
+    """Format the block appended to companion files."""
+    return f"\n---\n\n### {date_str} | {tool}\n\n{summary.strip()}\n"
+
+
+def ts(now: datetime = None) -> str:
+    return (now or datetime.now()).strftime("%Y-%m-%d %H:%M")
+
+
+# ── Global companion file ─────────────────────────────────────────────────────
+
+def ensure_global_ash() -> None:
+    """Create the global companion file if it doesn't exist."""
+    ASH_DIR.mkdir(parents=True, exist_ok=True)
+    if not GLOBAL_ASH.exists():
+        GLOBAL_ASH.write_text(
+            f"# {CFG['hub_label']}\n\n"
+            "> Personal context tracking across all devices and projects.\n"
+            "> Auto-updated by session-close on terminal exit.\n\n"
+            "## System Notes\n\n"
+            "_Add global setup notes, environment reminders, device info here._\n\n"
+            "## Project Index\n\n"
+            "| Project | Path | Created | Last Updated |\n"
+            "|---------|------|---------|----------|\n\n"
+            "## Session Log\n\n"
+            "<!-- Auto-appended below by update-session-docs -->\n"
+        )
+        print(f"Created: {GLOBAL_ASH}")
+
+
+def register_project_in_global(project_ash: Path, now: datetime) -> None:
+    """Add a project row to the global Project Index table (idempotent)."""
+    content = GLOBAL_ASH.read_text()
+    if str(project_ash) in content:
+        return
+
+    name      = project_ash.parent.name
+    dir_path  = project_ash.parent
+    link      = f"[{name}]({project_ash})"
+    timestamp = ts(now)
+    new_row   = f"| {link} | {dir_path} | {timestamp} | {timestamp} |"
+
+    lines     = content.splitlines()
+    in_index  = False
+    last_row  = -1
+    sep_row   = -1
+    for i, line in enumerate(lines):
+        if line.strip() == "## Project Index":
+            in_index = True
+            continue
+        if in_index:
+            if line.startswith("## "):
+                break
+            if line.startswith("|") and "|---" in line:
+                sep_row = i
+            elif line.startswith("|") and "Project" not in line:
+                last_row = i
+
+    insert_after = last_row if last_row >= 0 else sep_row
+    if insert_after >= 0:
+        lines.insert(insert_after + 1, new_row)
+        GLOBAL_ASH.write_text("\n".join(lines) + "\n")
+        print(f"  Registered {name} in global index")
+
+
+# ── Per-project companion file ────────────────────────────────────────────────
+
+def ensure_project_ash(project_ash: Path) -> bool:
+    """Create a minimal companion file if one doesn't exist. Returns True if created."""
+    if project_ash.exists():
+        return False
+    project_name = project_ash.parent.name
+    project_ash.write_text(
+        f"# {project_name}\n\n"
+        f"> [Global context]({GLOBAL_ASH})\n\n"
+        "## Status\n\n"
+        "_No status set._\n\n"
+        "## Next Steps\n\n"
+        "_No next steps defined._\n\n"
+        "## Session Log\n\n"
+        "<!-- Auto-appended below by update-session-docs -->\n"
+    )
+    print(f"  Created: {project_ash}")
+    return True
+
+
+# ── Session log insertion ─────────────────────────────────────────────────────
+
+def append_to_session_log(ash_path: Path, date_str: str, tool: str, summary: str) -> None:
+    """Insert a session block into the ## Session Log section (not raw EOF)."""
+    block   = session_block(date_str, tool, summary)
+    content = ash_path.read_text()
+
+    if "## Session Log" not in content:
+        # No section — append with header
+        with open(ash_path, "a") as f:
+            f.write(f"\n## Session Log\n{block}")
+        print(f"  Updated: {ash_path}")
+        return
+
+    lines        = content.splitlines()
+    session_start = next(
+        (i for i, l in enumerate(lines) if l.strip() == "## Session Log"), None
+    )
+    if session_start is None:
+        with open(ash_path, "a") as f:
+            f.write(block)
+        print(f"  Updated: {ash_path}")
+        return
+
+    # Find where the next ## section starts (insert before it)
+    insert_before = len(lines)
+    for i in range(session_start + 1, len(lines)):
+        if lines[i].startswith("## "):
+            insert_before = i
+            break
+
+    lines.insert(insert_before, block.rstrip())
+    ash_path.write_text("\n".join(lines) + "\n")
+    print(f"  Updated: {ash_path}")
+
+
+# ── CLAUDE.md touch ───────────────────────────────────────────────────────────
+
+def append_to_claude_md(claude_path: Path, date_str: str, tool: str, takeaway: str) -> None:
+    """Append a brief 2-line session note to CLAUDE.md (append-only, never modifies existing content)."""
+    if not claude_path.exists():
+        return
+    block = f"\n<!-- session: {date_str} | {tool} -->\n<!-- Last session: {takeaway} -->\n"
+    with open(claude_path, "a") as f:
+        f.write(block)
+    print(f"  Noted: {claude_path}")
+
+
+# ── Main ──────────────────────────────────────────────────────────────────────
+
+def main():
+    args    = parse_args()
+    cwd     = Path(args.cwd).expanduser().resolve()
+    summary = args.summary
+    tool    = args.tool
+
+    try:
+        dt = datetime.fromisoformat(args.date).astimezone()
+    except ValueError:
+        dt = datetime.now()
+    date_str = dt.strftime("%Y-%m-%d %H:%M")
+
+    # 1. Global companion file
+    ensure_global_ash()
+    append_to_session_log(GLOBAL_ASH, date_str, tool, summary)
+
+    # 2. Per-project companion file
+    #    Skip if cwd is a blocked system/home directory
+    if cwd not in _BLOCKED_DIRS and cwd.exists() and cwd.is_dir():
+        project_ash  = cwd / MD_FILE
+        newly_created = ensure_project_ash(project_ash)
+        append_to_session_log(project_ash, date_str, tool, summary)
+        if newly_created:
+            register_project_in_global(project_ash, dt)
+
+    # 3. CLAUDE.md — brief 2-line note only
+    if cwd not in _BLOCKED_DIRS:
+        takeaway = extract_takeaway(summary)
+        if takeaway:
+            append_to_claude_md(cwd / "CLAUDE.md", date_str, tool, takeaway)
+
+
+if __name__ == "__main__":
+    main()
