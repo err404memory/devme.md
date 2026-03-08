@@ -51,15 +51,19 @@ ash --help
 ash install
 ```
 
-Run this from the directory where you cloned or downloaded devme, so it can find `serve.html`. The wizard will:
+Run this from the directory where you cloned devme, so it can find `serve.html` and `wizard.html`. A browser window opens with a step-by-step setup wizard. It walks you through:
 
-- Prompt you for your settings (name, companion filename, editor, timezone, accent color)
-- Create `~/.ash/config.json` with your values
-- Copy `serve.html` to `~/.ash/serve.html`
-- Create your global hub file (`~/.ash/<your-filename>`)
-- Write `~/.ash/QUICKSTART.md` — a personalized quick reference with your actual filename substituted throughout
+- Choosing your companion filename (e.g. `alex.md` or `me.md`)
+- Setting your name, sidebar title, editor, timezone, and accent color
+- A live preview of the interface accent color as you pick it
 
-If you ever need to change your settings, edit `~/.ash/config.json` directly, or re-run `ash install --force` to go through the wizard again.
+On finish, the wizard:
+- Creates `~/.ash/config.json` with your values
+- Copies `serve.html` and `wizard.html` to `~/.ash/`
+- Creates your global hub file (`~/.ash/<your-filename>`)
+- Writes `~/.ash/QUICKSTART.md` — a personalized quick reference
+
+To reconfigure, run `ash install --force` or edit `~/.ash/config.json` directly.
 
 ---
 

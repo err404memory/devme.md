@@ -1159,6 +1159,7 @@ def cmd_watch(args):
 # ── Subcommand: serve ────────────────────────────────────────────────────────
 
 _SERVE_HTML_PATH = ASH_DIR / "serve.html"
+_WIZARD_HTML_PATH = ASH_DIR / "wizard.html"
 
 def _load_serve_html() -> str:
     """Load serve.html from ~/.ash/, substituting current config values."""
@@ -1183,6 +1184,87 @@ def _load_serve_html() -> str:
     html = html.replace("__ANN_ICON_COLOR__",   cfg.get("ann_icon_color",   cfg["accent_color"]))
     return html
 
+
+
+def _load_wizard_html() -> str:
+    """Load wizard.html from ~/.ash/."""
+    if not _WIZARD_HTML_PATH.exists():
+        # Fallback: minimal error page
+        return """<!DOCTYPE html><html><body style="font-family:sans-serif;padding:2rem;background:#0d0f14;color:#c0c8d8">
+<h2>wizard.html not found</h2>
+<p>Run <code>ash install</code> from the devme repo directory so it can find <code>wizard.html</code>:</p>
+<pre style="background:#13151d;padding:1rem;border-radius:6px;color:#7b96e8">cd /path/to/devme.md
+ash install</pre></body></html>"""
+    return _WIZARD_HTML_PATH.read_text()
+
+
+def _run_install(data: dict) -> dict:
+    """Write config and initialise ~/.ash/ from wizard POST data. Reloads module globals."""
+    import shutil
+
+    filename = data.get("filename", "me.md").strip()
+    if not filename:
+        filename = "me.md"
+    if not filename.endswith(".md"):
+        filename += ".md"
+
+    config = {
+        "username":    data.get("username", "me").strip() or "me",
+        "filename":    filename,
+        "hub_label":   data.get("hub_label", "My Context Hub").strip() or "My Context Hub",
+        "editor":      data.get("editor", "code").strip() or "code",
+        "timezone":    data.get("timezone", "UTC").strip() or "UTC",
+        "accent_color": data.get("accent_color", "#7b96e8").strip() or "#7b96e8",
+    }
+
+    cfg_path = Path.home() / ".ash" / "config.json"
+    cfg_path.parent.mkdir(parents=True, exist_ok=True)
+    cfg_path.write_text(json.dumps(config, indent=2) + "\n")
+
+    # Reload module-level globals so subsequent requests use the new config
+    global CFG, ASH_DIR, MD_FILE, GLOBAL_ASH, _SERVE_HTML_PATH, _WIZARD_HTML_PATH
+    CFG = _load_config()
+    ASH_DIR = Path(CFG["hub_dir"]).expanduser()
+    MD_FILE = CFG["filename"]
+    GLOBAL_ASH = ASH_DIR / MD_FILE
+    _SERVE_HTML_PATH = ASH_DIR / "serve.html"
+    _WIZARD_HTML_PATH = ASH_DIR / "wizard.html"
+
+    ensure_global_ash()
+
+    # Write personalized QUICKSTART.md
+    fn = MD_FILE
+    qs_path = ASH_DIR / "QUICKSTART.md"
+    qs_path.write_text(
+        f"# devme — Quick Start\n\n"
+        f"Your companion filename is **`{fn}`**.\n"
+        f"Wherever the docs say `me.md`, that means `{fn}` on your system.\n\n"
+        f"## First steps\n\n"
+        f"```sh\n"
+        f"ash serve                    # open the interface at http://localhost:7272\n"
+        f"ash init ~/projects/my-app   # create a companion file\n"
+        f"```\n\n"
+        f"## Commands\n\n"
+        f"```sh\n"
+        f"ash serve                    # start the local interface\n"
+        f"ash install                  # re-run setup wizard\n"
+        f"ash init [path]              # create a companion file in a directory\n"
+        f"ash update [path]            # refresh navigation links\n"
+        f"ash refresh                  # rebuild navigation in all registered files\n"
+        f"ash push [path]              # write Status/Next Steps back to project overview\n"
+        f"ash watch [path]             # continuous sync with project overview on save\n"
+        f"ash upgrade [--all]          # migrate older companion files to current format\n"
+        f"ash rename-overview <name>   # rename project overview files\n"
+        f"ash rm [path]                # remove a directory from the mesh index\n"
+        f"ash rm [path] --delete       # remove from index and delete the companion file\n"
+        f"```\n\n"
+        f"## Config: `~/.ash/config.json`\n\n"
+        f"Edit this file to change any setting. Re-run `ash install` to use the wizard again.\n\n"
+        f"## Docs\n\n"
+        f"README: https://github.com/err404memory/devme.md\n"
+    )
+
+    return {"ok": True, "hub_path": str(GLOBAL_ASH), "filename": fn}
 
 
 _SERVE_SSE_QUEUES: list = []
@@ -1228,7 +1310,11 @@ def _make_handler():
             p = parsed.path
 
             if p == '/':
-                self._redirect(f'/view?path={GLOBAL_ASH}')
+                cfg_path = Path.home() / '.ash' / 'config.json'
+                if not cfg_path.exists() and _WIZARD_HTML_PATH.exists():
+                    self._redirect('/setup')
+                else:
+                    self._redirect(f'/view?path={GLOBAL_ASH}')
             elif p == '/view':
                 path = params.get('path', [str(GLOBAL_ASH)])[0]
                 html = _load_serve_html().replace('__CURRENT_PATH__', path)
@@ -1242,6 +1328,9 @@ def _make_handler():
                     self._send(200, 'text/plain; charset=utf-8', Path(path).read_bytes())
                 except (FileNotFoundError, PermissionError):
                     self.send_error(404)
+            elif p == '/setup':
+                html = _load_wizard_html()
+                self._send(200, 'text/html; charset=utf-8', html.encode())
             elif p == '/events':
                 self._sse()
             elif p == '/api/mesh':
@@ -1276,6 +1365,17 @@ def _make_handler():
             parsed = urllib.parse.urlparse(self.path)
             params = urllib.parse.parse_qs(parsed.query)
             p = parsed.path
+            if p == '/api/install':
+                length = int(self.headers.get('Content-Length', 0))
+                body = self.rfile.read(length).decode('utf-8')
+                try:
+                    data = json.loads(body)
+                    result = _run_install(data)
+                    self._send(200, 'application/json', json.dumps(result).encode())
+                except Exception as e:
+                    err = json.dumps({"ok": False, "error": str(e)})
+                    self._send(500, 'application/json', err.encode())
+                return
             if p == '/api/notes':
                 path = params.get('path', [None])[0]
                 if not path:
@@ -1343,8 +1443,11 @@ def cmd_serve(args):
     url = f'http://localhost:{port}'
     print(f'ash serve  →  {url}')
     print('Watching all registered companion files. Ctrl+C to stop.')
+    cfg_path = Path.home() / ".ash" / "config.json"
+    wizard_exists = _WIZARD_HTML_PATH.exists()
+    open_url = f'{url}/setup' if (not cfg_path.exists() and wizard_exists) else url
     if not args.no_browser:
-        threading.Timer(0.4, lambda: webbrowser.open(url)).start()
+        threading.Timer(0.4, lambda: webbrowser.open(open_url)).start()
     try:
         server.serve_forever()
     except KeyboardInterrupt:
@@ -1386,151 +1489,48 @@ def cmd_rm(args):
 # ── Subcommand: install ───────────────────────────────────────────────────────
 
 def cmd_install(args):
-    """Interactive first-run setup. Creates config, copies serve.html, writes QUICKSTART.md."""
+    """Launch the web-based setup wizard in the browser."""
     import shutil
-    import readline  # noqa: F401 — enables arrow keys / backspace in input()
+    import http.server
+    import socket
+    import threading
+    import webbrowser
 
-    print("devme setup\n")
+    ash_dir = Path.home() / ".ash"
+    wizard_dest = ash_dir / "wizard.html"
+    serve_dest  = ash_dir / "serve.html"
 
-    cfg_path = Path.home() / ".ash" / "config.json"
-    if cfg_path.exists() and not args.force:
-        print(f"Config already exists at {cfg_path}")
-        print("Run `ash install --force` to overwrite.")
-        return
+    # Search for source files: current directory first, then script directory
+    search_dirs = [Path.cwd(), Path(__file__).parent]
 
-    # ── Prompt helpers ────────────────────────────────────────────────────────
+    for fname, dest in [("wizard.html", wizard_dest), ("serve.html", serve_dest)]:
+        if not dest.exists() or getattr(args, 'force', False):
+            src = next((d / fname for d in search_dirs if (d / fname).exists()), None)
+            if src:
+                ash_dir.mkdir(parents=True, exist_ok=True)
+                shutil.copy2(src, dest)
+                print(f"Copied {fname} → {dest}")
+            elif not dest.exists():
+                print(f"Error: {fname} not found.", file=sys.stderr)
+                print("Run this command from the devme repo directory:", file=sys.stderr)
+                print("  ash install", file=sys.stderr)
+                sys.exit(1)
 
-    def ask(prompt: str, default: str) -> str:
-        try:
-            val = input(f"{prompt} [{default}]: ").strip()
-        except (KeyboardInterrupt, EOFError):
-            print()
-            sys.exit(0)
-        return val if val else default
+    port = getattr(args, 'port', 7272)
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+        while s.connect_ex(('localhost', port)) == 0:
+            port += 1
 
-    def ask_yn(prompt: str, default: bool = True) -> bool:
-        d = "Y/n" if default else "y/N"
-        try:
-            val = input(f"{prompt} [{d}]: ").strip().lower()
-        except (KeyboardInterrupt, EOFError):
-            print()
-            sys.exit(0)
-        if not val:
-            return default
-        return val.startswith("y")
-
-    # ── Gather values ─────────────────────────────────────────────────────────
-
-    print("Press Enter to accept the default shown in [brackets].\n")
-
-    username   = ask("Your name or handle", "me")
-    filename   = ask("Companion filename   (e.g. me.md, alex.md, your initials)", "me.md")
-    if not filename.endswith(".md"):
-        filename += ".md"
-    hub_label  = ask("Sidebar title        (shown in the browser tab)", "My Context Hub")
-    editor     = ask("Editor command       (e.g. code, zed, nvim, subl)", "code")
-    timezone   = ask("Timezone             (IANA, e.g. America/Chicago)", "UTC")
-    accent     = ask("Accent color         (hex, e.g. #7b96e8)", "#7b96e8")
-
-    print()
-
-    # ── Write config ──────────────────────────────────────────────────────────
-
-    cfg_path.parent.mkdir(parents=True, exist_ok=True)
-    config = {
-        "username":    username,
-        "filename":    filename,
-        "hub_label":   hub_label,
-        "editor":      editor,
-        "timezone":    timezone,
-        "accent_color": accent,
-    }
-    cfg_path.write_text(json.dumps(config, indent=2) + "\n")
-    print(f"✓  Config written to {cfg_path}")
-
-    # ── Copy serve.html ───────────────────────────────────────────────────────
-
-    serve_dest = Path.home() / ".ash" / "serve.html"
-    # Look for serve.html next to the `ash` binary, then in cwd
-    candidates = [
-        Path(__file__).parent / "serve.html",
-        Path.cwd() / "serve.html",
-    ]
-    serve_src = next((p for p in candidates if p.exists()), None)
-    if serve_src:
-        shutil.copy2(serve_src, serve_dest)
-        print(f"✓  serve.html copied to {serve_dest}")
-    else:
-        print(f"⚠  serve.html not found — copy it manually to {serve_dest}")
-        print("   (Run this from the devme repo directory, or copy serve.html yourself.)")
-
-    # ── Reload config so constants reflect new values ─────────────────────────
-
-    global CFG, ASH_DIR, MD_FILE, GLOBAL_ASH, _SERVE_HTML_PATH
-    CFG = _load_config()
-    ASH_DIR = Path(CFG["hub_dir"]).expanduser()
-    MD_FILE = CFG["filename"]
-    GLOBAL_ASH = ASH_DIR / MD_FILE
-    _SERVE_HTML_PATH = ASH_DIR / "serve.html"
-
-    # ── Create global hub file ────────────────────────────────────────────────
-
-    ensure_global_ash()
-
-    # ── Write QUICKSTART.md ───────────────────────────────────────────────────
-
-    fn = filename  # user's actual filename, e.g. "alex.md"
-    qs_path = Path.home() / ".ash" / "QUICKSTART.md"
-    qs = f"""\
-# devme — Quick Start
-
-Your companion filename is **`{fn}`**. Wherever the docs say `me.md`, that means `{fn}` on your system.
-
-## First steps
-
-```sh
-ash serve                    # open the interface at http://localhost:7272
-ash init ~/projects/myapp    # create ~/{fn} for a project (uses your configured filename)
-```
-
-## Common commands
-
-```sh
-ash serve                    # start the local interface
-ash init [path]              # create a companion file in a directory
-ash update [path]            # refresh navigation links
-ash refresh                  # rebuild navigation in all registered files
-ash push [path]              # write Status/Next Steps back to a project overview
-ash watch [path]             # continuous two-way sync with project overview on save
-ash upgrade [--all]          # migrate older companion files to current format
-ash rename-overview <name>   # rename project overview files across registered projects
-ash rm [path]                # remove a directory from the mesh index
-ash rm [path] --delete       # remove from index and delete the companion file from disk
-```
-
-## Config
-
-Your config is at `~/.ash/config.json`. Edit it to change any setting.
-See the README for a full config reference: https://github.com/err404memory/devme.md
-
-## Docs
-
-Full manual: open `MANUAL.md` from the devme repo, or browse the README on GitHub.
-"""
-    qs_path.write_text(qs)
-    print(f"✓  Quick start written to {qs_path}")
-
-    # ── Done ──────────────────────────────────────────────────────────────────
-
-    print(f"""
-Setup complete. Your companion filename is `{fn}`.
-
-Next:
-  ash serve              — open the interface
-  ash init [path]        — create your first companion file
-
-Your personalized quick reference: {qs_path}
-""")
+    threading.Thread(target=_serve_watcher, daemon=True).start()
+    server = http.server.ThreadingHTTPServer(('localhost', port), _make_handler())
+    url = f'http://localhost:{port}'
+    print(f'devme setup  →  {url}/setup')
+    print('Complete setup in your browser. Ctrl+C to cancel.')
+    threading.Timer(0.4, lambda: webbrowser.open(f'{url}/setup')).start()
+    try:
+        server.serve_forever()
+    except KeyboardInterrupt:
+        print('\nSetup cancelled.')
 
 
 # ── Entry point ───────────────────────────────────────────────────────────────
@@ -1542,8 +1542,9 @@ def main():
     )
     sub = p.add_subparsers(dest="command", required=True)
 
-    install_p = sub.add_parser("install", help="Interactive first-run setup")
-    install_p.add_argument("--force", action="store_true", help="Overwrite existing config")
+    install_p = sub.add_parser("install", help="Launch the web setup wizard")
+    install_p.add_argument("--force", action="store_true", help="Re-copy files even if already installed")
+    install_p.add_argument("--port", type=int, default=7272, help="Port to serve on (default: 7272)")
 
     init_p = sub.add_parser("init", help="Initialize a companion file in a directory")
     init_p.add_argument("path", nargs="?", default=".", help="Target directory (default: .)")

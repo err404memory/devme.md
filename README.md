@@ -27,6 +27,7 @@ That same structure makes the files easy for AI assistants to read and maintain 
 ```
 ash          CLI — init, serve, sync, manage
 serve.html   Web interface (single-file SPA, loaded from ~/.ash/)
+wizard.html  Setup wizard (browser-based, opened by ash install)
 hooks/       Session auto-logging pipeline (optional, see below)
 ```
 
@@ -47,16 +48,16 @@ ash install
 > echo 'export PATH="$HOME/.local/bin:$PATH"' >> ~/.bashrc && source ~/.bashrc
 > ```
 
-`ash install` copies the web interface, creates `~/.ash/config.json` by prompting you for your settings, creates your global hub file, and writes a personalized `~/.ash/QUICKSTART.md` with your actual companion filename substituted throughout.
+`ash install` opens a browser-based setup wizard. It walks you through choosing your companion filename, editor, timezone, and accent color — with a live preview of the interface as you configure it. Run it from the directory where you cloned the repo so it can find `serve.html` and `wizard.html`.
 
-Run it from the directory where you cloned or downloaded the repo so it can find `serve.html`.
+On finish, the wizard creates `~/.ash/config.json`, copies the web interface, creates your global hub file, and writes a personalized `~/.ash/QUICKSTART.md`.
 
 ---
 
 ## Usage
 
 ```sh
-ash install                  # interactive first-run setup (run once)
+ash install                  # browser-based setup wizard (run once, or ash install --force to redo)
 ash serve                    # start the local interface (default: localhost:7272)
 ash init [path]              # create a companion file in a directory
 ash update [path]            # refresh navigation links + pull status from project overview

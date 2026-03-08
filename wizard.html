@@ -1,0 +1,1324 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>devme — Setup</title>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fontsource-variable/inter@5/index.min.css">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fontsource/iosevka@5/index.min.css">
+  <style>
+    /* ── Reset ─────────────────────────────────────────────────────────────── */
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    /* ── Design tokens ──────────────────────────────────────────────────────── */
+    :root {
+      --bg:      #0d0f14;
+      --card:    #13151d;
+      --border:  #21242f;
+      --text:    #c0c8d8;
+      --muted:   #525c72;
+      --dim:     #7a8499;
+      --head:    #dde2f2;
+      --accent:  #7b96e8;
+      --code:    #181b26;
+      --active:  rgba(123, 150, 232, .12);
+    }
+
+    /* ── Base ───────────────────────────────────────────────────────────────── */
+    html, body {
+      height: 100%;
+      background: var(--bg);
+      color: var(--text);
+      font-family: "Inter Variable", "Inter", system-ui, -apple-system, sans-serif;
+      font-size: 15px;
+      line-height: 1.6;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    body {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 100vh;
+      padding: 1.5rem;
+    }
+
+    /* ── Wizard shell ───────────────────────────────────────────────────────── */
+    #wiz {
+      width: 100%;
+      max-width: 520px;
+      min-height: calc(100vh - 3rem);
+      max-height: calc(100vh - 3rem);
+      display: flex;
+      flex-direction: column;
+      gap: 0;
+    }
+
+    /* ── Progress dots ──────────────────────────────────────────────────────── */
+    #progress {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: .45rem;
+      padding: 1.5rem 0 1.25rem;
+      flex-shrink: 0;
+    }
+
+    .dot {
+      width: 7px;
+      height: 7px;
+      border-radius: 50%;
+      background: var(--border);
+      transition: background .25s, transform .25s;
+    }
+
+    .dot.filled {
+      background: var(--accent);
+      transform: scale(1.15);
+    }
+
+    /* ── Stage ──────────────────────────────────────────────────────────────── */
+    #stage {
+      position: relative;
+      overflow: hidden;
+      flex: 1;
+    }
+
+    /* ── Step ───────────────────────────────────────────────────────────────── */
+    .step {
+      position: absolute;
+      inset: 0;
+      display: flex;
+      flex-direction: column;
+      padding: .5rem .25rem 1rem;
+      transform: translateX(100%);
+      transition: transform 280ms ease;
+      overflow-y: auto;
+      scrollbar-width: thin;
+      scrollbar-color: var(--border) transparent;
+    }
+
+    .step.active {
+      transform: translateX(0);
+    }
+
+    .step.exit-left {
+      transform: translateX(-100%);
+    }
+
+    /* ── Typography ─────────────────────────────────────────────────────────── */
+    .step-heading {
+      font-size: 1.45rem;
+      font-weight: 700;
+      color: var(--head);
+      letter-spacing: -.015em;
+      line-height: 1.25;
+      margin-bottom: .45rem;
+    }
+
+    .step-sub {
+      font-size: .875rem;
+      color: var(--dim);
+      margin-bottom: 1.6rem;
+      line-height: 1.55;
+    }
+
+    /* ── Form elements ──────────────────────────────────────────────────────── */
+    .field {
+      display: flex;
+      flex-direction: column;
+      gap: .4rem;
+      margin-bottom: 1.1rem;
+    }
+
+    .field label {
+      font-size: .8rem;
+      font-weight: 600;
+      color: var(--dim);
+      letter-spacing: .04em;
+      text-transform: uppercase;
+    }
+
+    .field input[type="text"],
+    .field input[type="url"] {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: .55rem .8rem;
+      font-family: "Inter Variable", "Inter", system-ui, sans-serif;
+      font-size: .9rem;
+      color: var(--text);
+      outline: none;
+      transition: border-color .15s, box-shadow .15s;
+      width: 100%;
+    }
+
+    .field input[type="text"]:focus,
+    .field input[type="url"]:focus {
+      border-color: var(--accent);
+      box-shadow: 0 0 0 3px rgba(123, 150, 232, .1);
+    }
+
+    .field input.invalid {
+      border-color: #e05c6e;
+      box-shadow: 0 0 0 3px rgba(224, 92, 110, .1);
+    }
+
+    .field-hint {
+      font-size: .78rem;
+      color: var(--muted);
+      line-height: 1.5;
+    }
+
+    .field-hint a {
+      color: var(--accent);
+      text-decoration: none;
+    }
+
+    .field-hint a:hover {
+      text-decoration: underline;
+    }
+
+    .field-error {
+      font-size: .78rem;
+      color: #e05c6e;
+      line-height: 1.5;
+      display: none;
+    }
+
+    .field-error.visible {
+      display: block;
+    }
+
+    /* ── Buttons ────────────────────────────────────────────────────────────── */
+    .btn {
+      border-radius: 6px;
+      padding: .5rem 1.1rem;
+      font-size: .875rem;
+      font-family: "Inter Variable", "Inter", system-ui, sans-serif;
+      cursor: pointer;
+      transition: opacity .15s, background .15s, transform .1s;
+      border: none;
+      line-height: 1.4;
+      display: inline-flex;
+      align-items: center;
+      gap: .4rem;
+    }
+
+    .btn:active { transform: scale(.98); }
+    .btn:disabled { opacity: .5; cursor: not-allowed; transform: none; }
+
+    .btn-primary {
+      background: var(--accent);
+      color: #0d0f14;
+      font-weight: 600;
+    }
+
+    .btn-primary:hover:not(:disabled) { opacity: .88; }
+
+    .btn-secondary {
+      background: transparent;
+      color: var(--dim);
+      border: 1px solid var(--border);
+      font-weight: 500;
+    }
+
+    .btn-secondary:hover:not(:disabled) {
+      color: var(--text);
+      border-color: var(--dim);
+    }
+
+    .btn-large {
+      padding: .7rem 1.5rem;
+      font-size: .95rem;
+    }
+
+    /* ── Navigation bar ─────────────────────────────────────────────────────── */
+    #wiz-nav {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 1rem 0 .5rem;
+      flex-shrink: 0;
+      border-top: 1px solid var(--border);
+      margin-top: .5rem;
+    }
+
+    #btn-back:not(.visible) {
+      visibility: hidden;
+      pointer-events: none;
+    }
+
+    /* ── Step 0 — Welcome ───────────────────────────────────────────────────── */
+    #step-0 {
+      transform: translateX(0);
+      justify-content: center;
+      align-items: center;
+      text-align: center;
+      gap: 0;
+      padding-bottom: 0;
+    }
+
+    .welcome-logo {
+      font-size: 2.8rem;
+      font-weight: 800;
+      color: var(--head);
+      letter-spacing: -.04em;
+      margin-bottom: .3rem;
+    }
+
+    .welcome-logo span {
+      color: var(--accent);
+    }
+
+    .welcome-tagline {
+      font-size: .95rem;
+      color: var(--dim);
+      margin-bottom: 1.8rem;
+      font-weight: 400;
+    }
+
+    .file-tree-box {
+      font-family: "Iosevka", "Cascadia Code", monospace;
+      background: var(--code);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: .9rem 1.2rem;
+      font-size: .82rem;
+      color: var(--dim);
+      line-height: 2;
+      text-align: left;
+      margin-bottom: 1.5rem;
+      width: 100%;
+    }
+
+    .file-tree-box .tree-name {
+      color: var(--text);
+    }
+
+    .file-tree-box .tree-accent {
+      color: var(--accent);
+    }
+
+    .file-tree-box .tree-comment {
+      color: var(--muted);
+    }
+
+    .welcome-explain {
+      font-size: .88rem;
+      color: var(--text);
+      margin-bottom: .55rem;
+      line-height: 1.65;
+    }
+
+    .welcome-note {
+      font-size: .8rem;
+      color: var(--muted);
+      line-height: 1.6;
+      margin-bottom: 1.8rem;
+    }
+
+    #step-0 .btn-primary {
+      padding: .65rem 1.6rem;
+      font-size: .95rem;
+    }
+
+    /* ── Preview tree (step 1) ──────────────────────────────────────────────── */
+    .preview-tree {
+      font-family: "Iosevka", "Cascadia Code", monospace;
+      background: var(--code);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: .9rem 1.1rem;
+      font-size: .82rem;
+      color: var(--dim);
+      line-height: 1.9;
+      margin-bottom: .85rem;
+      transition: border-color .2s;
+    }
+
+    .preview-tree .tree-companion {
+      color: var(--accent);
+      font-weight: 600;
+    }
+
+    /* ── Sidebar mockup (step 2) ────────────────────────────────────────────── */
+    .sidebar-mockup {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: .75rem 1rem;
+      font-size: .82rem;
+      margin-bottom: 1.1rem;
+      display: flex;
+      align-items: center;
+      gap: .7rem;
+    }
+
+    .sidebar-mockup-icon {
+      font-size: 1rem;
+      color: var(--accent);
+      flex-shrink: 0;
+      line-height: 1;
+    }
+
+    .sidebar-mockup-text {
+      display: flex;
+      flex-direction: column;
+      gap: .1rem;
+    }
+
+    .sidebar-mockup-name {
+      font-size: .875rem;
+      font-weight: 700;
+      color: var(--accent);
+      letter-spacing: .03em;
+      line-height: 1.3;
+    }
+
+    .sidebar-mockup-label {
+      font-size: .75rem;
+      color: var(--muted);
+      line-height: 1.3;
+    }
+
+    /* ── Editor picker (step 3) ─────────────────────────────────────────────── */
+    .editor-grid {
+      display: flex;
+      flex-wrap: wrap;
+      gap: .5rem;
+      margin-bottom: 1.1rem;
+    }
+
+    .editor-btn {
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: .45rem .9rem;
+      background: transparent;
+      color: var(--dim);
+      cursor: pointer;
+      transition: all .15s;
+      font-family: "Inter Variable", "Inter", system-ui, sans-serif;
+      font-size: .875rem;
+      font-weight: 500;
+    }
+
+    .editor-btn:hover {
+      border-color: var(--dim);
+      color: var(--text);
+    }
+
+    .editor-btn.selected {
+      border-color: var(--accent);
+      background: var(--active);
+      color: var(--accent);
+      font-weight: 600;
+    }
+
+    /* ── Color row (step 4) ─────────────────────────────────────────────────── */
+    .color-row {
+      display: flex;
+      align-items: center;
+      gap: .65rem;
+    }
+
+    .color-swatch-wrap {
+      flex-shrink: 0;
+      position: relative;
+      width: 38px;
+      height: 38px;
+    }
+
+    input[type="color"] {
+      width: 38px;
+      height: 38px;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      cursor: pointer;
+      padding: 2px;
+      background: var(--card);
+      appearance: none;
+      -webkit-appearance: none;
+    }
+
+    input[type="color"]::-webkit-color-swatch-wrapper {
+      padding: 2px;
+      border-radius: 4px;
+    }
+
+    input[type="color"]::-webkit-color-swatch {
+      border: none;
+      border-radius: 3px;
+    }
+
+    input[type="color"]::-moz-color-swatch {
+      border: none;
+      border-radius: 3px;
+    }
+
+    .color-row .field {
+      flex: 1;
+      margin-bottom: 0;
+    }
+
+    /* ── Checklist (step 5) ─────────────────────────────────────────────────── */
+    .checklist {
+      display: flex;
+      flex-direction: column;
+      gap: .55rem;
+      margin-bottom: 1.25rem;
+    }
+
+    .check-row {
+      display: flex;
+      align-items: baseline;
+      gap: .75rem;
+    }
+
+    .check-mark {
+      color: var(--accent);
+      font-size: .85rem;
+      font-weight: 700;
+      flex-shrink: 0;
+      width: 1rem;
+      text-align: center;
+      font-family: "Iosevka", monospace;
+    }
+
+    .check-path {
+      font-family: "Iosevka", "Cascadia Code", monospace;
+      font-size: .8rem;
+      color: var(--dim);
+      min-width: 0;
+    }
+
+    .check-path strong {
+      color: var(--text);
+    }
+
+    .check-desc {
+      font-size: .78rem;
+      color: var(--muted);
+      flex-shrink: 0;
+    }
+
+    /* ── Config preview details ─────────────────────────────────────────────── */
+    details.config-preview {
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      overflow: hidden;
+      margin-bottom: 1.1rem;
+    }
+
+    details.config-preview summary {
+      padding: .65rem 1rem;
+      font-size: .8rem;
+      font-weight: 600;
+      color: var(--dim);
+      cursor: pointer;
+      user-select: none;
+      letter-spacing: .02em;
+      list-style: none;
+      display: flex;
+      align-items: center;
+      gap: .4rem;
+      transition: color .15s, background .15s;
+    }
+
+    details.config-preview summary::-webkit-details-marker { display: none; }
+
+    details.config-preview summary:hover {
+      color: var(--text);
+      background: rgba(255,255,255,.02);
+    }
+
+    details.config-preview[open] summary {
+      color: var(--text);
+      border-bottom: 1px solid var(--border);
+    }
+
+    details.config-preview pre {
+      font-family: "Iosevka", "Cascadia Code", monospace;
+      font-size: .78rem;
+      color: var(--dim);
+      background: var(--code);
+      padding: .9rem 1rem;
+      line-height: 1.75;
+      overflow-x: auto;
+      margin: 0;
+    }
+
+    details.config-preview pre .json-key {
+      color: var(--accent);
+    }
+
+    details.config-preview pre .json-str {
+      color: #a8e6b2;
+    }
+
+    /* ── Install error ──────────────────────────────────────────────────────── */
+    .install-error {
+      font-size: .8rem;
+      color: #e05c6e;
+      margin-top: .75rem;
+      padding: .55rem .8rem;
+      background: rgba(224, 92, 110, .08);
+      border: 1px solid rgba(224, 92, 110, .2);
+      border-radius: 6px;
+      display: none;
+      line-height: 1.5;
+    }
+
+    .install-error.visible { display: block; }
+
+    /* ── Step 6 — Done ──────────────────────────────────────────────────────── */
+    #step-6 {
+      justify-content: center;
+    }
+
+    .done-heading {
+      font-size: 1.6rem;
+      font-weight: 800;
+      color: var(--head);
+      letter-spacing: -.02em;
+      margin-bottom: .4rem;
+      line-height: 1.2;
+    }
+
+    .done-sub {
+      font-size: .88rem;
+      color: var(--dim);
+      margin-bottom: 1.8rem;
+    }
+
+    .done-sub code {
+      font-family: "Iosevka", monospace;
+      color: var(--accent);
+      background: var(--code);
+      padding: .1em .35em;
+      border-radius: 4px;
+      font-size: .85rem;
+    }
+
+    .cmd-box {
+      font-family: "Iosevka", "Cascadia Code", monospace;
+      background: var(--code);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: .9rem 1.1rem;
+      font-size: .8rem;
+      color: var(--dim);
+      line-height: 2;
+      margin-bottom: 1rem;
+    }
+
+    .cmd-box .cmd {
+      color: var(--text);
+    }
+
+    .cmd-box .cmd-comment {
+      color: var(--muted);
+    }
+
+    .done-note {
+      font-size: .78rem;
+      color: var(--muted);
+      line-height: 1.6;
+      margin-bottom: 1.5rem;
+    }
+
+    .done-note code {
+      font-family: "Iosevka", monospace;
+      color: var(--dim);
+      background: var(--code);
+      padding: .1em .35em;
+      border-radius: 4px;
+      font-size: .78rem;
+    }
+
+    /* ── Spinner ────────────────────────────────────────────────────────────── */
+    @keyframes spin {
+      to { transform: rotate(360deg); }
+    }
+
+    .spinner {
+      display: inline-block;
+      width: 14px;
+      height: 14px;
+      border: 2px solid rgba(13, 15, 20, .35);
+      border-top-color: #0d0f14;
+      border-radius: 50%;
+      animation: spin .6s linear infinite;
+    }
+
+    /* ── Scrollbar ──────────────────────────────────────────────────────────── */
+    .step::-webkit-scrollbar { width: 4px; }
+    .step::-webkit-scrollbar-track { background: transparent; }
+    .step::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+
+    /* ── Subtle fade-in on load ─────────────────────────────────────────────── */
+    @keyframes fadeUp {
+      from { opacity: 0; transform: translateY(8px); }
+      to   { opacity: 1; transform: translateY(0); }
+    }
+
+    #wiz {
+      animation: fadeUp .35s ease both;
+    }
+  </style>
+</head>
+<body>
+
+<div id="wiz">
+
+  <!-- Progress dots -->
+  <div id="progress">
+    <div class="dot filled" data-i="0"></div>
+    <div class="dot" data-i="1"></div>
+    <div class="dot" data-i="2"></div>
+    <div class="dot" data-i="3"></div>
+    <div class="dot" data-i="4"></div>
+    <div class="dot" data-i="5"></div>
+    <div class="dot" data-i="6"></div>
+  </div>
+
+  <!-- Stage -->
+  <div id="stage">
+
+    <!-- ── Step 0: Welcome ──────────────────────────────────────────────────── -->
+    <div class="step active" id="step-0">
+      <div class="welcome-logo">dev<span>me</span></div>
+      <div class="welcome-tagline">A companion file for every directory.</div>
+
+      <div class="file-tree-box">
+        <span class="tree-name">my-project/</span><br>
+        ├── <span class="tree-name">README.md</span>&nbsp;&nbsp;&nbsp;&nbsp;<span class="tree-comment">─── documents the project</span><br>
+        └── <span class="tree-accent">me.md</span>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="tree-comment">─── documents your context</span>
+      </div>
+
+      <p class="welcome-explain">
+        <code style="font-family:'Iosevka',monospace;font-size:.85em;color:var(--dim);background:var(--code);padding:.1em .35em;border-radius:4px;">README.md</code>
+        tells anyone what a project is.<br>
+        Your companion file tells <em>you</em> where you are in it.
+      </p>
+
+      <p class="welcome-note">
+        Status, next steps, session notes — whatever only you need to know.
+        It's a markdown file. It lives alongside <code style="font-family:'Iosevka',monospace;font-size:.85em;padding:.1em .3em;background:var(--code);border-radius:3px;color:var(--dim);">README.md</code>.
+        It never modifies anything.
+      </p>
+
+      <button class="btn btn-primary" id="btn-get-started">Get started →</button>
+    </div>
+
+    <!-- ── Step 1: Filename ──────────────────────────────────────────────────── -->
+    <div class="step" id="step-1">
+      <div class="step-heading">Choose your companion filename</div>
+      <div class="step-sub">devme creates a file with this name in every directory you register.</div>
+
+      <div class="field">
+        <label for="inp-filename">Filename</label>
+        <input type="text" id="inp-filename" placeholder="me.md" value="me.md" autocomplete="off" spellcheck="false">
+        <div class="field-error" id="err-filename">Must end in <code style="font-family:'Iosevka',monospace;font-size:.9em;">.md</code> and not be empty.</div>
+      </div>
+
+      <div class="preview-tree" id="tree-preview">
+        <span style="color:var(--text);">~/projects/my-project/</span><br>
+        ├── <span style="color:var(--dim);">README.md</span><br>
+        └── <span class="tree-companion" id="tree-filename-display">me.md</span>&nbsp;&nbsp;<span style="color:var(--muted);font-size:.75em;">← your companion file</span>
+      </div>
+
+      <p class="field-hint">
+        Use your name, initials, or just <code style="font-family:'Iosevka',monospace;">me.md</code>.
+        Add it to <code style="font-family:'Iosevka',monospace;">.gitignore</code> to keep it private,
+        or commit it to share context with your team.
+      </p>
+    </div>
+
+    <!-- ── Step 2: Username ──────────────────────────────────────────────────── -->
+    <div class="step" id="step-2">
+      <div class="step-heading">What should we call you?</div>
+      <div class="step-sub">Shown in the sidebar header of the interface.</div>
+
+      <div class="field">
+        <label for="inp-username">Your name</label>
+        <input type="text" id="inp-username" placeholder="alex" autocomplete="off" spellcheck="false">
+      </div>
+
+      <div class="sidebar-mockup">
+        <div class="sidebar-mockup-icon">✦</div>
+        <div class="sidebar-mockup-text">
+          <div class="sidebar-mockup-name" id="mockup-name">you</div>
+          <div class="sidebar-mockup-label" id="mockup-label">My Context Hub</div>
+        </div>
+      </div>
+
+      <div class="field">
+        <label for="inp-hub-label">Sidebar title</label>
+        <input type="text" id="inp-hub-label" placeholder="My Context Hub" value="My Context Hub" autocomplete="off" spellcheck="false">
+      </div>
+    </div>
+
+    <!-- ── Step 3: Editor ────────────────────────────────────────────────────── -->
+    <div class="step" id="step-3">
+      <div class="step-heading">Which editor do you use?</div>
+      <div class="step-sub">Used by the "Open in editor" button in the interface.</div>
+
+      <div class="editor-grid">
+        <button class="editor-btn selected" data-editor="code">VS Code</button>
+        <button class="editor-btn" data-editor="zed">Zed</button>
+        <button class="editor-btn" data-editor="nvim">Neovim</button>
+        <button class="editor-btn" data-editor="subl">Sublime</button>
+        <button class="editor-btn" data-editor="cursor">Cursor</button>
+      </div>
+
+      <div class="field">
+        <label for="inp-editor-cmd">Or type a command:</label>
+        <input type="text" id="inp-editor-cmd" value="code" autocomplete="off" spellcheck="false">
+        <div class="field-error" id="err-editor">Editor command must not be empty.</div>
+      </div>
+    </div>
+
+    <!-- ── Step 4: Timezone & accent ──────────────────────────────────────────── -->
+    <div class="step" id="step-4">
+      <div class="step-heading">Two more settings</div>
+
+      <div class="field">
+        <label for="inp-timezone">Timezone</label>
+        <input type="text" id="inp-timezone" placeholder="UTC" value="UTC" autocomplete="off" spellcheck="false">
+        <div class="field-error" id="err-timezone">Timezone must not be empty.</div>
+        <p class="field-hint" style="margin-top:.3rem;">
+          IANA format — e.g. America/New_York · Europe/London · Asia/Tokyo<br>
+          <a href="https://en.wikipedia.org/wiki/List_of_tz_database_time_zones" target="_blank" rel="noopener">Full list →</a>
+        </p>
+      </div>
+
+      <div class="field" style="margin-top:.3rem;">
+        <label>Accent color</label>
+        <div class="color-row">
+          <div class="color-swatch-wrap">
+            <input type="color" id="inp-color-pick" value="#7b96e8" title="Pick accent color">
+          </div>
+          <div class="field" style="margin-bottom:0;">
+            <input type="text" id="inp-color-hex" value="#7b96e8" maxlength="7" autocomplete="off" spellcheck="false" placeholder="#7b96e8" style="font-family:'Iosevka',monospace;letter-spacing:.05em;">
+          </div>
+        </div>
+        <div class="field-error" id="err-color">Must be a valid hex color like <code style="font-family:'Iosevka',monospace;">#7b96e8</code>.</div>
+        <p class="field-hint" style="margin-top:.4rem;">This color will be used throughout the devme interface.</p>
+      </div>
+    </div>
+
+    <!-- ── Step 5: Review ────────────────────────────────────────────────────── -->
+    <div class="step" id="step-5">
+      <div class="step-heading">Ready to set up devme</div>
+      <div class="step-sub">Here's what will be created.</div>
+
+      <div class="checklist">
+        <div class="check-row">
+          <div class="check-mark">✓</div>
+          <div class="check-path"><strong>~/.ash/config.json</strong></div>
+          <div class="check-desc">your settings</div>
+        </div>
+        <div class="check-row">
+          <div class="check-mark">✓</div>
+          <div class="check-path"><strong>~/.ash/serve.html</strong></div>
+          <div class="check-desc">the web interface</div>
+        </div>
+        <div class="check-row">
+          <div class="check-mark">✓</div>
+          <div class="check-path"><strong>~/.ash/wizard.html</strong></div>
+          <div class="check-desc">this setup wizard</div>
+        </div>
+        <div class="check-row">
+          <div class="check-mark">✓</div>
+          <div class="check-path"><strong>~/.ash/<span id="review-filename">me.md</span></strong></div>
+          <div class="check-desc">your global context hub</div>
+        </div>
+        <div class="check-row">
+          <div class="check-mark">✓</div>
+          <div class="check-path"><strong>~/.ash/QUICKSTART.md</strong></div>
+          <div class="check-desc">personalized quick reference</div>
+        </div>
+      </div>
+
+      <details class="config-preview" id="config-details">
+        <summary>
+          <span id="config-arrow" style="font-size:.7rem;transition:transform .2s;display:inline-block;">▸</span>
+          Preview config
+        </summary>
+        <pre id="config-json-preview"></pre>
+      </details>
+
+      <div id="install-error" class="install-error"></div>
+    </div>
+
+    <!-- ── Step 6: Done ──────────────────────────────────────────────────────── -->
+    <div class="step" id="step-6">
+      <div class="done-heading" id="done-heading">You're set up.</div>
+      <div class="done-sub" id="done-sub">Your companion filename is <code>me.md</code>.</div>
+
+      <div class="cmd-box">
+        <span class="cmd">ash serve</span>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="cmd-comment"># open the interface</span><br>
+        <span class="cmd">ash init [path]</span>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="cmd-comment"># create your first companion file</span>
+      </div>
+
+      <p class="done-note">Your personalized quick reference is at <code>~/.ash/QUICKSTART.md</code>.</p>
+
+      <button class="btn btn-primary btn-large" id="btn-open-devme">Open devme →</button>
+    </div>
+
+  </div><!-- /stage -->
+
+  <!-- Navigation bar -->
+  <div id="wiz-nav">
+    <button class="btn btn-secondary" id="btn-back">← Back</button>
+    <button class="btn btn-primary" id="btn-next">Next →</button>
+  </div>
+
+</div><!-- /wiz -->
+
+<script>
+(function () {
+  'use strict';
+
+  /* ── State ──────────────────────────────────────────────────────────────── */
+  const TOTAL = 7;
+  let current = 0;
+  let isTransitioning = false;
+
+  const state = {
+    filename:    'me.md',
+    username:    '',
+    hub_label:   'My Context Hub',
+    editor:      'code',
+    timezone:    'UTC',
+    accent_color: '#7b96e8',
+  };
+
+  /* ── DOM refs ───────────────────────────────────────────────────────────── */
+  const steps     = Array.from(document.querySelectorAll('.step'));
+  const dots      = Array.from(document.querySelectorAll('.dot'));
+  const btnBack   = document.getElementById('btn-back');
+  const btnNext   = document.getElementById('btn-next');
+  const wizNav    = document.getElementById('wiz-nav');
+
+  /* ── Inputs ─────────────────────────────────────────────────────────────── */
+  const inpFilename   = document.getElementById('inp-filename');
+  const inpUsername   = document.getElementById('inp-username');
+  const inpHubLabel   = document.getElementById('inp-hub-label');
+  const inpEditorCmd  = document.getElementById('inp-editor-cmd');
+  const inpTimezone   = document.getElementById('inp-timezone');
+  const inpColorPick  = document.getElementById('inp-color-pick');
+  const inpColorHex   = document.getElementById('inp-color-hex');
+
+  /* ── Live displays ──────────────────────────────────────────────────────── */
+  const treeFilenameDisplay = document.getElementById('tree-filename-display');
+  const mockupName          = document.getElementById('mockup-name');
+  const mockupLabel         = document.getElementById('mockup-label');
+  const reviewFilename      = document.getElementById('review-filename');
+  const configJsonPreview   = document.getElementById('config-json-preview');
+  const doneHeading         = document.getElementById('done-heading');
+  const doneSub             = document.getElementById('done-sub');
+  const installError        = document.getElementById('install-error');
+  const configDetails       = document.getElementById('config-details');
+
+  /* ── Editor buttons ──────────────────────────────────────────────────────── */
+  const editorBtns = Array.from(document.querySelectorAll('.editor-btn'));
+
+  /* ── Progress dots ───────────────────────────────────────────────────────── */
+  function updateDots(idx) {
+    dots.forEach((d, i) => {
+      d.classList.toggle('filled', i <= idx);
+    });
+  }
+
+  /* ── Navigation visibility ───────────────────────────────────────────────── */
+  function updateNav(idx) {
+    // Back button
+    if (idx === 0 || idx === 6) {
+      btnBack.classList.remove('visible');
+    } else {
+      btnBack.classList.add('visible');
+    }
+
+    // Next button label & visibility
+    if (idx === 0) {
+      wizNav.style.display = 'none';
+    } else if (idx === 5) {
+      wizNav.style.display = '';
+      btnNext.textContent = 'Set up devme';
+    } else if (idx === 6) {
+      wizNav.style.display = 'none';
+    } else {
+      wizNav.style.display = '';
+      btnNext.textContent = 'Next →';
+    }
+  }
+
+  /* ── Transition ──────────────────────────────────────────────────────────── */
+  function goTo(next, direction) {
+    if (isTransitioning || next < 0 || next >= TOTAL) return;
+    if (next === current) return;
+
+    isTransitioning = true;
+
+    const from = steps[current];
+    const to   = steps[next];
+
+    // Position incoming step off screen in the correct direction
+    if (direction === 'forward') {
+      to.style.transform = 'translateX(100%)';
+    } else {
+      to.style.transform = 'translateX(-100%)';
+    }
+
+    // Force reflow so the initial position takes effect before transition
+    to.offsetHeight; // eslint-disable-line
+
+    // Apply transitions
+    from.style.transition = 'transform 280ms ease';
+    to.style.transition   = 'transform 280ms ease';
+
+    // Activate
+    to.classList.add('active');
+
+    // Slide both
+    requestAnimationFrame(() => {
+      if (direction === 'forward') {
+        from.style.transform = 'translateX(-100%)';
+      } else {
+        from.style.transform = 'translateX(100%)';
+      }
+      to.style.transform = 'translateX(0)';
+    });
+
+    setTimeout(() => {
+      from.classList.remove('active');
+      from.style.transition = '';
+      to.style.transition   = '';
+      current = next;
+      isTransitioning = false;
+
+      // Focus first input in the new step
+      const firstInput = to.querySelector('input[type="text"]');
+      if (firstInput) firstInput.focus();
+    }, 290);
+
+    updateDots(next);
+    updateNav(next);
+
+    if (next === 5) refreshReview();
+  }
+
+  /* ── Validation ──────────────────────────────────────────────────────────── */
+  function showError(errEl, inputEl, show) {
+    if (show) {
+      errEl.classList.add('visible');
+      if (inputEl) inputEl.classList.add('invalid');
+    } else {
+      errEl.classList.remove('visible');
+      if (inputEl) inputEl.classList.remove('invalid');
+    }
+  }
+
+  function validateStep(idx) {
+    if (idx === 1) {
+      let val = inpFilename.value.trim();
+      if (!val) {
+        showError(document.getElementById('err-filename'), inpFilename, true);
+        return false;
+      }
+      if (!val.endsWith('.md')) val += '.md';
+      inpFilename.value = val;
+      state.filename = val;
+      showError(document.getElementById('err-filename'), inpFilename, false);
+      return true;
+    }
+
+    if (idx === 2) {
+      state.username  = inpUsername.value.trim() || 'me';
+      state.hub_label = inpHubLabel.value.trim() || 'My Context Hub';
+      return true;
+    }
+
+    if (idx === 3) {
+      const val = inpEditorCmd.value.trim();
+      if (!val) {
+        showError(document.getElementById('err-editor'), inpEditorCmd, true);
+        return false;
+      }
+      state.editor = val;
+      showError(document.getElementById('err-editor'), inpEditorCmd, false);
+      return true;
+    }
+
+    if (idx === 4) {
+      const tz = inpTimezone.value.trim();
+      if (!tz) {
+        showError(document.getElementById('err-timezone'), inpTimezone, true);
+        return false;
+      }
+      state.timezone = tz;
+      showError(document.getElementById('err-timezone'), inpTimezone, false);
+
+      const hex = inpColorHex.value.trim();
+      if (!/^#[0-9a-fA-F]{6}$/.test(hex)) {
+        showError(document.getElementById('err-color'), inpColorHex, true);
+        return false;
+      }
+      state.accent_color = hex;
+      showError(document.getElementById('err-color'), inpColorHex, false);
+      return true;
+    }
+
+    return true;
+  }
+
+  /* ── Config JSON render ───────────────────────────────────────────────────── */
+  function buildConfigJson() {
+    const cfg = {
+      username:    state.username  || 'me',
+      filename:    state.filename  || 'me.md',
+      hub_label:   state.hub_label || 'My Context Hub',
+      editor:      state.editor    || 'code',
+      timezone:    state.timezone  || 'UTC',
+      accent_color: state.accent_color || '#7b96e8',
+    };
+    return cfg;
+  }
+
+  function colorizeJson(obj) {
+    const lines = JSON.stringify(obj, null, 2).split('\n');
+    return lines.map(line => {
+      return line.replace(
+        /("[\w_]+")(:\s*)(".*?")/g,
+        '<span class="json-key">$1</span>$2<span class="json-str">$3</span>'
+      ).replace(
+        /("[\w_]+")(:\s*)(true|false|null|\d+)/g,
+        '<span class="json-key">$1</span>$2<span style="color:#f8b878;">$3</span>'
+      );
+    }).join('\n');
+  }
+
+  function refreshReview() {
+    // Sync state from inputs
+    state.filename    = inpFilename.value.trim() || 'me.md';
+    state.username    = inpUsername.value.trim() || 'me';
+    state.hub_label   = inpHubLabel.value.trim() || 'My Context Hub';
+    state.editor      = inpEditorCmd.value.trim() || 'code';
+    state.timezone    = inpTimezone.value.trim() || 'UTC';
+    state.accent_color = inpColorHex.value.trim() || '#7b96e8';
+
+    reviewFilename.textContent = state.filename;
+    configJsonPreview.innerHTML = colorizeJson(buildConfigJson());
+  }
+
+  /* ── Step 1: Filename preview ─────────────────────────────────────────────── */
+  inpFilename.addEventListener('input', () => {
+    const val = inpFilename.value || 'me.md';
+    treeFilenameDisplay.textContent = val;
+    // Clear error on type
+    showError(document.getElementById('err-filename'), inpFilename, false);
+  });
+
+  /* ── Step 2: Sidebar mockup ──────────────────────────────────────────────── */
+  inpUsername.addEventListener('input', () => {
+    const val = inpUsername.value.trim();
+    mockupName.textContent = val || 'you';
+  });
+
+  inpHubLabel.addEventListener('input', () => {
+    const val = inpHubLabel.value.trim();
+    mockupLabel.textContent = val || 'My Context Hub';
+  });
+
+  /* ── Step 3: Editor buttons ───────────────────────────────────────────────── */
+  editorBtns.forEach(btn => {
+    btn.addEventListener('click', () => {
+      editorBtns.forEach(b => b.classList.remove('selected'));
+      btn.classList.add('selected');
+      inpEditorCmd.value = btn.dataset.editor;
+      showError(document.getElementById('err-editor'), inpEditorCmd, false);
+    });
+  });
+
+  inpEditorCmd.addEventListener('input', () => {
+    // Deselect all preset buttons when manually editing
+    editorBtns.forEach(b => b.classList.remove('selected'));
+    showError(document.getElementById('err-editor'), inpEditorCmd, false);
+  });
+
+  /* ── Step 4: Accent color ─────────────────────────────────────────────────── */
+  function applyAccent(hex) {
+    document.documentElement.style.setProperty('--accent', hex);
+    // Also update active bg
+    const r = parseInt(hex.slice(1,3), 16);
+    const g = parseInt(hex.slice(3,5), 16);
+    const b = parseInt(hex.slice(5,7), 16);
+    document.documentElement.style.setProperty('--active', `rgba(${r},${g},${b},.12)`);
+  }
+
+  inpColorPick.addEventListener('input', () => {
+    const hex = inpColorPick.value;
+    inpColorHex.value = hex;
+    state.accent_color = hex;
+    applyAccent(hex);
+    showError(document.getElementById('err-color'), inpColorHex, false);
+  });
+
+  inpColorHex.addEventListener('input', () => {
+    const val = inpColorHex.value.trim();
+    if (/^#[0-9a-fA-F]{6}$/.test(val)) {
+      inpColorPick.value = val;
+      state.accent_color = val;
+      applyAccent(val);
+      showError(document.getElementById('err-color'), inpColorHex, false);
+    }
+  });
+
+  inpColorHex.addEventListener('blur', () => {
+    let val = inpColorHex.value.trim();
+    if (val && !val.startsWith('#')) val = '#' + val;
+    if (!/^#[0-9a-fA-F]{6}$/.test(val)) {
+      showError(document.getElementById('err-color'), inpColorHex, true);
+    } else {
+      inpColorHex.value = val;
+    }
+  });
+
+  /* ── Config details arrow ─────────────────────────────────────────────────── */
+  configDetails.addEventListener('toggle', () => {
+    const arrow = document.getElementById('config-arrow');
+    arrow.style.transform = configDetails.open ? 'rotate(90deg)' : 'rotate(0deg)';
+  });
+
+  /* ── Install POST ─────────────────────────────────────────────────────────── */
+  async function doInstall() {
+    // Final validation pass
+    for (let i = 1; i <= 4; i++) {
+      if (!validateStep(i)) {
+        goTo(i, current > i ? 'backward' : 'forward');
+        return;
+      }
+    }
+
+    // Collect final state
+    const payload = {
+      username:    state.username  || 'me',
+      filename:    state.filename  || 'me.md',
+      hub_label:   state.hub_label || 'My Context Hub',
+      editor:      state.editor    || 'code',
+      timezone:    state.timezone  || 'UTC',
+      accent_color: state.accent_color || '#7b96e8',
+    };
+
+    // Update UI
+    const originalText = btnNext.innerHTML;
+    btnNext.disabled = true;
+    btnNext.innerHTML = '<span class="spinner"></span> Setting up…';
+    installError.classList.remove('visible');
+
+    try {
+      const res = await fetch('/api/install', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+
+      let data;
+      try {
+        data = await res.json();
+      } catch {
+        data = { ok: false, error: `Server returned ${res.status}` };
+      }
+
+      if (data && data.ok) {
+        // Success — update done screen and advance
+        const displayName = payload.username === 'me' ? '' : payload.username;
+        doneHeading.textContent = displayName
+          ? `You're set up, ${displayName}.`
+          : "You're all set up.";
+        const sub = document.getElementById('done-sub');
+        sub.innerHTML = `Your companion filename is <code>${escHtml(payload.filename)}</code>.`;
+        goTo(6, 'forward');
+      } else {
+        const msg = (data && data.error) ? data.error : 'An unexpected error occurred.';
+        installError.textContent = msg;
+        installError.classList.add('visible');
+        btnNext.disabled = false;
+        btnNext.innerHTML = originalText;
+      }
+    } catch (err) {
+      installError.textContent = `Network error: ${err.message}`;
+      installError.classList.add('visible');
+      btnNext.disabled = false;
+      btnNext.innerHTML = originalText;
+    }
+  }
+
+  function escHtml(str) {
+    return str.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  }
+
+  /* ── Button handlers ──────────────────────────────────────────────────────── */
+  document.getElementById('btn-get-started').addEventListener('click', () => {
+    goTo(1, 'forward');
+  });
+
+  btnNext.addEventListener('click', () => {
+    if (current === 5) {
+      doInstall();
+      return;
+    }
+    if (validateStep(current)) {
+      goTo(current + 1, 'forward');
+    }
+  });
+
+  btnBack.addEventListener('click', () => {
+    goTo(current - 1, 'backward');
+  });
+
+  document.getElementById('btn-open-devme').addEventListener('click', () => {
+    window.location.href = '/';
+  });
+
+  /* ── Enter key advances ──────────────────────────────────────────────────── */
+  document.addEventListener('keydown', e => {
+    if (e.key !== 'Enter') return;
+    if (e.target.tagName === 'TEXTAREA') return;
+
+    // Don't fire if target is the color hex input on step 4 while invalid
+    if (current === 0) {
+      document.getElementById('btn-get-started').click();
+      return;
+    }
+    if (current === 6) return;
+
+    if (current === 5) {
+      doInstall();
+      return;
+    }
+
+    if (validateStep(current)) {
+      goTo(current + 1, 'forward');
+    }
+  });
+
+  /* ── Initial state ────────────────────────────────────────────────────────── */
+  updateDots(0);
+  updateNav(0);
+
+  // Ensure step 0 is positioned correctly (not hidden)
+  steps[0].style.transform = 'translateX(0)';
+  // All other steps start off to the right
+  steps.slice(1).forEach(s => {
+    s.style.transform = 'translateX(100%)';
+    s.style.transition = 'none';
+  });
+
+})();
+</script>
+
+</body>
+</html>
