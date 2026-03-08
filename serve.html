@@ -1073,7 +1073,7 @@ function makeSessionEntries() {
 function injectFilepath(path) {
   const ct = document.getElementById('content');
   const h1 = ct.querySelector('h1');
-  // For md files: strip /ash.md suffix to show directory; for others: show full path
+  // For md files: strip the companion filename suffix to show directory; for others: show full path
   const dir = path.endsWith('/' + MD_FILE) ? path.slice(0, -(MD_FILE.length + 1)) : path;
   const bar = document.createElement('div');
   bar.className = 'filepath-bar';
@@ -1446,7 +1446,7 @@ function updateCrumb(path) {
       node.textContent = p;
       node.addEventListener('click', e => {
         e.preventDefault();
-        // Find ash.md in this directory, or any registered item whose dir matches
+        // Find the companion file in this directory, or any registered item whose dir matches
         const mdPath = dirPath + '/' + MD_FILE;
         const item = allItems.find(i => i.path === mdPath)
                   || allItems.find(i => i.dir === dirPath);

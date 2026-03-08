@@ -1,17 +1,23 @@
 #!/usr/bin/env python3
 """
-parse-ai-session — read a Claude Code (or other AI tool) JSONL transcript,
-summarize it with `claude -p`, save a structured note to the vault, and
-update companion files via update-session-docs.
+parse-ai-session — read a JSONL session log from Claude Code, Kilo, Codex,
+or any AI tool that stores sessions in JSONL format. Extracts messages and
+metadata, produces a structured summary, and passes it to update-session-docs
+which appends it to the relevant companion files.
 
-Usage: parse-ai-session <transcript.jsonl> <tool-name>
-  tool-name: claude | codex | kilo
+Usage: parse-ai-session <session.jsonl> <tool-name>
+  tool-name: any string — appears in the Session Log entry header
+             common values: claude, kilo, codex, aider
+
+For tools that do not produce JSONL (ChatGPT exports, Kimi, Ollama frontends,
+plain text logs), use parse-ghostty-session as a generic text log parser, or
+write a dedicated parse-{toolname} script following the same pattern.
 
 Install: copy to ~/.local/bin/parse-ai-session and chmod +x
 
 Config (via ~/.ash/config.json):
   vault_dir   — where session archives are saved (default: ~/Documents/sessions)
-                Set to a path inside your server mount for cross-device access.
+  tool_paths  — override default log directories per tool (see session-close)
 """
 
 import json

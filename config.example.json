@@ -1,5 +1,5 @@
 {
-  "_instructions": "Copy this file to ~/.ash/config.json and fill in your values. Keys starting with _ are ignored by the CLI.",
+  "_instructions": "Copy this file to ~/.ash/config.json and fill in your values. Keys starting with _ are ignored.",
 
   "username":             "yourname",
   "filename":             "me.md",
@@ -13,5 +13,12 @@
   "vault_dir":            "",
 
   "server_prefix_local":  "",
-  "server_prefix_remote": ""
+  "server_prefix_remote": "",
+
+  "_tool_paths_instructions": "Override the default log directory for each AI tool. Leave blank or omit to use the built-in default. Remove a key entirely to disable scanning that tool.",
+  "tool_paths": {
+    "claude": "",
+    "kilo":   "",
+    "codex":  ""
+  }
 }

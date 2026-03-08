@@ -4,6 +4,10 @@ This manual walks you through installing and using devme for the first time.
 
 ---
 
+> **Note:** Throughout this documentation, `me.md` is used as the companion filename placeholder.
+> After running `ash install`, your actual configured filename (e.g. `alex.md`) will be used on your system.
+> Wherever docs say `me.md`, substitute your configured filename.
+
 ## What is devme?
 
 devme gives every directory on your filesystem a companion markdown file — a context note that travels with that location. Your companion files link to each other by directory relationship (parent, siblings, children), forming a navigable mesh you can browse from a local web interface.
@@ -36,20 +40,21 @@ Verify it works:
 ash --help
 ```
 
-**2. Create your hub directory and copy the web interface:**
+**2. Run the setup wizard:**
 
 ```sh
-mkdir -p ~/.ash
-cp serve.html ~/.ash/serve.html
+ash install
 ```
 
-**3. Create your config file:**
+Run this from the directory where you cloned or downloaded devme, so it can find `serve.html`. The wizard will:
 
-```sh
-cp config.example.json ~/.ash/config.json
-```
+- Prompt you for your settings (name, companion filename, editor, timezone, accent color)
+- Create `~/.ash/config.json` with your values
+- Copy `serve.html` to `~/.ash/serve.html`
+- Create your global hub file (`~/.ash/<your-filename>`)
+- Write `~/.ash/QUICKSTART.md` — a personalized quick reference with your actual filename substituted throughout
 
-Then open `~/.ash/config.json` in your editor and fill in your values. At minimum, set `username` and `timezone`. Everything else has sensible defaults.
+If you ever need to change your settings, edit `~/.ash/config.json` directly, or re-run `ash install --force` to go through the wizard again.
 
 ---
 
@@ -70,7 +75,7 @@ The config file lives at `~/.ash/config.json`. The CLI reads it on every run, fa
 
 | Key | Default | Description |
 |-----|---------|-------------|
-| `username` | `"ash"` | Displayed in the sidebar header |
+| `username` | `"you"` | Displayed in the sidebar header |
 | `filename` | `"me.md"` | Companion filename created in each directory |
 | `hub_label` | `"My Context Hub"` | Browser tab and sidebar title |
 | `hub_dir` | `"~/.ash"` | Where your global companion file and `serve.html` live |
@@ -239,6 +244,48 @@ If your filesystem is mounted across machines at different paths (e.g. a server 
 ```
 
 Annotations are keyed to a device-agnostic path internally. The same note is visible whether you're on the server directly or accessing its files through the mount on your laptop.
+
+---
+
+## Session Auto-Logging
+
+The `hooks/` directory provides an optional pipeline that scans your local AI tool logs and terminal session logs — whatever exists on your system — and appends context to your companion files automatically.
+
+devme has no AI dependency. The hooks are log parsers. `session-close` checks known locations for recently-closed sessions from Claude Code, Kilo, Codex, Aider, Ghostty, tmux, or any tool you configure. It reads those logs and extracts what was discussed — decisions, ideas, generated code, session summaries — then writes that context to the Session Log of the companion file for the relevant project directory. No external service is contacted. Nothing is sent anywhere.
+
+### How it works
+
+On terminal exit, `session-close` checks all configured AI tool log directories for recently-closed sessions. For each one it finds, it dispatches to `parse-ai-session` (JSONL-format logs: Claude Code, Kilo, Codex, Aider, and others) or `parse-ghostty-session` (text/terminal logs). The resulting summary is passed to `update-session-docs`, which appends it to the `## Session Log` section of the companion file for whatever project directory was active.
+
+You can also call `update-session-docs` directly to append a manual note without any log file:
+
+```sh
+update-session-docs --summary "Fixed the auth bug, pushed to staging" \
+  --cwd ~/projects/my-app --tool manual --date "$(date -Iseconds)"
+```
+
+### Setup
+
+See the **Session auto-logging** section of the README for full installation steps.
+
+### Session log format
+
+Each entry looks like:
+
+```markdown
+---
+
+### 2026-03-08 14:32 | claude
+
+## Key Points
+- Implemented the auth flow
+- Resolved the CORS issue on the staging endpoint
+
+## Takeaway
+Auth flow complete and tested. Staging deploy blocked on SSL cert renewal.
+```
+
+Entries stack newest-last inside the `## Session Log` section and are rendered as collapsible entries in the devme viewer.
 
 ---
 

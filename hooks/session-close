@@ -1,70 +1,122 @@
 #!/bin/bash
-# session-close — triggered by the bash EXIT trap in ~/.bashrc.
-# Looks for a recently-modified AI transcript and schedules async parsing.
-# Silently exits if no recent AI session is found.
+# session-close — bash EXIT trap dispatcher.
+# Scans local AI tool log directories and terminal session logs for recently-
+# closed sessions. Dispatches each to the appropriate parser, which extracts
+# context and appends it to the relevant companion files via update-session-docs.
+#
+# Works with any AI tool that writes session logs to a local directory.
+# No AI is invoked — this script only reads files that already exist.
 #
 # Install: copy to ~/.local/bin/session-close and chmod +x
-# Activate: add the following to ~/.bashrc (inside the interactive-shell guard):
+# Activate: add to ~/.bashrc inside the interactive shell guard:
 #   trap '~/.local/bin/session-close' EXIT
 #
-# NOTE: Do NOT add an interactive-shell guard here ($- check).
-# This script always runs as a non-interactive child process — $- never contains 'i'.
-# The interactive check lives in ~/.bashrc: the trap is only registered there,
-# and ~/.bashrc only runs for interactive shells.
+# Configure additional tool paths in ~/.ash/config.json:
+#   "tool_paths": {
+#     "claude": "~/.claude/projects",
+#     "kilo":   "~/.kilo/projects",
+#     "codex":  "~/.codex/sessions"
+#   }
 
-CLAUDE_PROJECTS="$HOME/.claude/projects"
 LOG="$HOME/.logs/session-parser.log"
+THRESHOLD="${ASH_SESSION_THRESHOLD:-300}"   # seconds; override via env var
 
-# Configurable: seconds — transcripts modified within this window = this session
-THRESHOLD="${ASH_SESSION_THRESHOLD:-300}"
-
-# ── Guard: require parse-ai-session ──────────────────────────────────────────
 PARSE_AI="$HOME/.local/bin/parse-ai-session"
-if [ ! -x "$PARSE_AI" ]; then
-    exit 0
-fi
-
-# ── Claude Code transcript ────────────────────────────────────────────────────
-now=$(date +%s)
-recent_file=""
-recent_mtime=0
-
-if [ -d "$CLAUDE_PROJECTS" ]; then
-    while IFS= read -r f; do
-        mtime=$(stat -c %Y "$f" 2>/dev/null) || continue
-        age=$(( now - mtime ))
-        if [ "$age" -lt "$THRESHOLD" ] && [ "$mtime" -gt "$recent_mtime" ]; then
-            recent_file="$f"
-            recent_mtime="$mtime"
-        fi
-    done < <(find "$CLAUDE_PROJECTS" -name "*.jsonl" 2>/dev/null)
-fi
-
-if [ -n "$recent_file" ]; then
-    mkdir -p "$(dirname "$LOG")"
-    nohup "$PARSE_AI" "$recent_file" "claude" >> "$LOG" 2>&1 &
-    disown
-fi
-
-# ── Ghostty terminal log ──────────────────────────────────────────────────────
-# GHOSTTY_LOG is exported by ~/.bashrc when a non-tmux Ghostty window starts
-# logging via `script`. Parse the log if it's recent (< 1 hour old).
 PARSE_GHOSTTY="$HOME/.local/bin/parse-ghostty-session"
+
+# Guard: nothing to do without the AI session parser
+[ -x "$PARSE_AI" ] || exit 0
+
+now=$(date +%s)
+
+# ── Helper: dispatch most-recent matching file in a directory ─────────────────
+dispatch_recent() {
+    # Usage: dispatch_recent <directory> <glob-pattern> <tool-name>
+    local dir="$1" pattern="$2" tool="$3"
+    [ -d "$dir" ] || return
+
+    local recent="" best_mtime=0
+    while IFS= read -r f; do
+        local t
+        t=$(stat -c %Y "$f" 2>/dev/null) || continue
+        local age=$(( now - t ))
+        if [ "$age" -lt "$THRESHOLD" ] && [ "$t" -gt "$best_mtime" ]; then
+            recent="$f"
+            best_mtime="$t"
+        fi
+    done < <(find "$dir" -name "$pattern" 2>/dev/null)
+
+    if [ -n "$recent" ]; then
+        mkdir -p "$(dirname "$LOG")"
+        nohup "$PARSE_AI" "$recent" "$tool" >> "$LOG" 2>&1 &
+        disown
+    fi
+}
+
+# ── Helper: read a tool path from config.json, falling back to a default ──────
+_tool_path() {
+    # Usage: _tool_path <tool-name> <default-path>
+    python3 -c "
+import json, os, sys
+cfg = os.path.expanduser('~/.ash/config.json')
+default = os.path.expanduser(sys.argv[2])
+try:
+    d = json.load(open(cfg))
+    raw = d.get('tool_paths', {}).get(sys.argv[1], '') or sys.argv[2]
+    print(os.path.expanduser(raw))
+except Exception:
+    print(default)
+" "$1" "$2" 2>/dev/null
+}
+
+# ── JSONL-format AI tool logs ─────────────────────────────────────────────────
+# Each line below scans one tool's log directory for recently-modified JSONL
+# files and dispatches the most recent one to parse-ai-session.
+#
+# The tool name is passed through to update-session-docs and appears in the
+# Session Log entry header (e.g. "### 2026-03-08 14:32 | claude").
+#
+# To add a tool: add a dispatch_recent line with its log directory.
+# To override a path: set it in config.json under "tool_paths".
+
+dispatch_recent "$(_tool_path claude "~/.claude/projects")"  "*.jsonl" "claude"
+dispatch_recent "$(_tool_path kilo   "~/.kilo/projects")"    "*.jsonl" "kilo"
+dispatch_recent "$(_tool_path codex  "~/.codex/sessions")"   "*.jsonl" "codex"
+
+# ── Per-project logs (tools that write logs into the project directory) ────────
+# Aider writes .aider.chat.history.md directly into the working directory.
+AIDER_LOG="$PWD/.aider.chat.history.md"
+if [ -f "$AIDER_LOG" ]; then
+    age=$(( now - $(stat -c %Y "$AIDER_LOG" 2>/dev/null || echo 0) ))
+    if [ "$age" -lt "$THRESHOLD" ]; then
+        mkdir -p "$(dirname "$LOG")"
+        nohup "$PARSE_AI" "$AIDER_LOG" "aider" >> "$LOG" 2>&1 &
+        disown
+    fi
+fi
+
+# ── Terminal session logs ─────────────────────────────────────────────────────
+# GHOSTTY_LOG is exported by ~/.bashrc when a Ghostty window starts logging
+# via `script`. Parse the log if it was recently active (< 1 hour).
 if [ -x "$PARSE_GHOSTTY" ] && [ -n "$GHOSTTY_LOG" ] && [ -f "$GHOSTTY_LOG" ]; then
-    ghost_mtime=$(stat -c %Y "$GHOSTTY_LOG" 2>/dev/null || echo 0)
-    ghost_age=$(( now - ghost_mtime ))
-    if [ "$ghost_age" -lt 3600 ]; then
+    age=$(( now - $(stat -c %Y "$GHOSTTY_LOG" 2>/dev/null || echo 0) ))
+    if [ "$age" -lt 3600 ]; then
         mkdir -p "$(dirname "$LOG")"
         nohup "$PARSE_GHOSTTY" "$GHOSTTY_LOG" >> "$LOG" 2>&1 &
         disown
     fi
 fi
 
-# ── Future tool support ───────────────────────────────────────────────────────
-# Add similar blocks here for Kilo, Codex, etc.
-# Find their transcript directories, use the same mtime pattern,
-# and pass the tool name as the second argument to parse-ai-session.
+# ── Adding more tools ─────────────────────────────────────────────────────────
+# JSONL format (add a dispatch_recent line):
+#   Cursor:       ~/.cursor/logs/  or  ~/.cursor-server/
+#   Continue.dev: ~/.continue/sessions/
 #
-# Example:
-# KILO_SESSIONS="$HOME/.kilo/sessions"
-# ... (same find + mtime loop, call: nohup "$PARSE_AI" "$recent_file" "kilo" ...)
+# Other formats (needs a dedicated parse-{toolname} script):
+#   ChatGPT:      export from chat.openai.com/settings → data export (ZIP → JSON)
+#   Claude.ai:    export from claude.ai/settings → data export
+#   Kimi:         check ~/.config/Kimi/ or the app's data directory
+#   Ollama:       depends on frontend — Open WebUI stores history in a local DB
+#
+# For any tool that writes markdown or plain text logs, parse-ghostty-session
+# can be reused as a generic text log parser.

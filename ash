@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
 """
-ash — personal context CLI for the ash.md system.
+ash — personal context CLI for the devme companion file system.
 
 Subcommands:
-  init [path]     Initialize an ash.md in the target directory
-  update [path]   Refresh navigation section of an existing ash.md
-  refresh         Update navigation in all registered ash.md files
+  init [path]     Initialize a companion file in the target directory
+  update [path]   Refresh navigation section of an existing companion file
+  refresh         Update navigation in all registered companion files
 
 Usage:
   ash init [path] [--force]
@@ -28,16 +28,16 @@ from pathlib import Path
 def _load_config() -> dict:
     """Load ~/.ash/config.json, falling back to defaults for any missing key."""
     defaults = {
-        "username":              "Ash",
+        "username":              "you",
         "filename":              "me.md",
         "hub_label":             "Personal Context Hub",
-        "hub_dir":               "~/.me",
+        "hub_dir":               "~/.ash",
         "editor":                "zed",
         "accent_color":          "#7b96e8",
         "timezone":              "America/Los_Angeles",
         "notes_file":            "",        # empty = use hub_dir/file-notes.json
-        "server_prefix_local":   "",        # e.g. "~/server" on satellite
-        "server_prefix_remote":  "",        # e.g. "/home/ashes" on jeffrey
+        "server_prefix_local":   "",        # e.g. "~/mnt/server" — local mount path
+        "server_prefix_remote":  "",        # e.g. "/home/user"  — path on the remote machine
     }
     cfg_path = Path.home() / ".ash" / "config.json"
     if cfg_path.exists():
@@ -54,7 +54,7 @@ CFG = _load_config()
 # ── Constants ─────────────────────────────────────────────────────────────────
 
 ASH_DIR    = Path(CFG["hub_dir"]).expanduser()
-MD_FILE    = CFG["filename"]           # e.g. "ash.md" or "steve.md"
+MD_FILE    = CFG["filename"]           # e.g. "me.md" or "alex.md"
 GLOBAL_ASH = ASH_DIR / MD_FILE
 
 NOISE_DIRS = {".git", "node_modules", "__pycache__", "venv", ".venv", "dist", "build", "out", "flutter", "go"}
@@ -873,7 +873,7 @@ def cmd_init(args):
         print(f"Error: not a directory: {target}", file=sys.stderr)
         sys.exit(1)
     if target == Path.home():
-        print("Warning: initializing ash.md in your home directory.")
+        print(f"Warning: initializing {MD_FILE} in your home directory.")
 
     ash_path = target / MD_FILE
     overwrite = ash_path.exists()
@@ -916,7 +916,7 @@ def cmd_update(args):
     target = Path(args.path).expanduser().resolve()
     ash_path = target / MD_FILE if target.is_dir() else target
     if not ash_path.exists():
-        print(f"Error: no ash.md found at {ash_path}", file=sys.stderr)
+        print(f"Error: no {MD_FILE} found at {ash_path}", file=sys.stderr)
         sys.exit(1)
 
     now = datetime.now()
@@ -943,7 +943,7 @@ def cmd_push(args):
     target = Path(args.path).expanduser().resolve()
     ash_path = target / MD_FILE if target.is_dir() else target
     if not ash_path.exists():
-        print(f"Error: no ash.md found at {ash_path}", file=sys.stderr)
+        print(f"Error: no {MD_FILE} found at {ash_path}", file=sys.stderr)
         sys.exit(1)
     overview = find_overview(ash_path.parent)
     if overview is None:
@@ -961,7 +961,7 @@ def cmd_push(args):
 def cmd_refresh(_args):
     paths = list_registered_paths()
     if not paths:
-        print("No registered ash.md files found in global index.")
+        print("No registered companion files found in global index.")
         return
     print(f"Refreshing {len(paths)} registered file(s)...")
     now = datetime.now()
@@ -989,12 +989,12 @@ def cmd_upgrade(args):
     if args.all:
         paths = list_registered_paths()
         if not paths:
-            print("No registered ash.md files found.")
+            print("No registered companion files found.")
             return
     else:
         ash_path = target / MD_FILE if target.is_dir() else target
         if not ash_path.exists():
-            print(f"Error: no ash.md found at {ash_path}", file=sys.stderr)
+            print(f"Error: no {MD_FILE} found at {ash_path}", file=sys.stderr)
             sys.exit(1)
         paths = [ash_path]
 
@@ -1125,7 +1125,7 @@ def cmd_watch(args):
     overview = ash_path.parent / "_OVERVIEW.md"
 
     if not ash_path.exists():
-        print(f"Error: no ash.md found at {ash_path}", file=sys.stderr)
+        print(f"Error: no {MD_FILE} found at {ash_path}", file=sys.stderr)
         sys.exit(1)
     overview = find_overview(ash_path.parent)
     if overview is None:
@@ -1342,7 +1342,7 @@ def cmd_serve(args):
     server = http.server.ThreadingHTTPServer(('localhost', port), _make_handler())
     url = f'http://localhost:{port}'
     print(f'ash serve  →  {url}')
-    print('Watching all registered ash.md files. Ctrl+C to stop.')
+    print('Watching all registered companion files. Ctrl+C to stop.')
     if not args.no_browser:
         threading.Timer(0.4, lambda: webbrowser.open(url)).start()
     try:
@@ -1383,49 +1383,204 @@ def cmd_rm(args):
         print(f"Companion file kept at {ash_path}  (use --delete to remove it from disk too)")
 
 
+# ── Subcommand: install ───────────────────────────────────────────────────────
+
+def cmd_install(args):
+    """Interactive first-run setup. Creates config, copies serve.html, writes QUICKSTART.md."""
+    import shutil
+    import readline  # noqa: F401 — enables arrow keys / backspace in input()
+
+    print("devme setup\n")
+
+    cfg_path = Path.home() / ".ash" / "config.json"
+    if cfg_path.exists() and not args.force:
+        print(f"Config already exists at {cfg_path}")
+        print("Run `ash install --force` to overwrite.")
+        return
+
+    # ── Prompt helpers ────────────────────────────────────────────────────────
+
+    def ask(prompt: str, default: str) -> str:
+        try:
+            val = input(f"{prompt} [{default}]: ").strip()
+        except (KeyboardInterrupt, EOFError):
+            print()
+            sys.exit(0)
+        return val if val else default
+
+    def ask_yn(prompt: str, default: bool = True) -> bool:
+        d = "Y/n" if default else "y/N"
+        try:
+            val = input(f"{prompt} [{d}]: ").strip().lower()
+        except (KeyboardInterrupt, EOFError):
+            print()
+            sys.exit(0)
+        if not val:
+            return default
+        return val.startswith("y")
+
+    # ── Gather values ─────────────────────────────────────────────────────────
+
+    print("Press Enter to accept the default shown in [brackets].\n")
+
+    username   = ask("Your name or handle", "me")
+    filename   = ask("Companion filename   (e.g. me.md, alex.md, your initials)", "me.md")
+    if not filename.endswith(".md"):
+        filename += ".md"
+    hub_label  = ask("Sidebar title        (shown in the browser tab)", "My Context Hub")
+    editor     = ask("Editor command       (e.g. code, zed, nvim, subl)", "code")
+    timezone   = ask("Timezone             (IANA, e.g. America/Chicago)", "UTC")
+    accent     = ask("Accent color         (hex, e.g. #7b96e8)", "#7b96e8")
+
+    print()
+
+    # ── Write config ──────────────────────────────────────────────────────────
+
+    cfg_path.parent.mkdir(parents=True, exist_ok=True)
+    config = {
+        "username":    username,
+        "filename":    filename,
+        "hub_label":   hub_label,
+        "editor":      editor,
+        "timezone":    timezone,
+        "accent_color": accent,
+    }
+    cfg_path.write_text(json.dumps(config, indent=2) + "\n")
+    print(f"✓  Config written to {cfg_path}")
+
+    # ── Copy serve.html ───────────────────────────────────────────────────────
+
+    serve_dest = Path.home() / ".ash" / "serve.html"
+    # Look for serve.html next to the `ash` binary, then in cwd
+    candidates = [
+        Path(__file__).parent / "serve.html",
+        Path.cwd() / "serve.html",
+    ]
+    serve_src = next((p for p in candidates if p.exists()), None)
+    if serve_src:
+        shutil.copy2(serve_src, serve_dest)
+        print(f"✓  serve.html copied to {serve_dest}")
+    else:
+        print(f"⚠  serve.html not found — copy it manually to {serve_dest}")
+        print("   (Run this from the devme repo directory, or copy serve.html yourself.)")
+
+    # ── Reload config so constants reflect new values ─────────────────────────
+
+    global CFG, ASH_DIR, MD_FILE, GLOBAL_ASH, _SERVE_HTML_PATH
+    CFG = _load_config()
+    ASH_DIR = Path(CFG["hub_dir"]).expanduser()
+    MD_FILE = CFG["filename"]
+    GLOBAL_ASH = ASH_DIR / MD_FILE
+    _SERVE_HTML_PATH = ASH_DIR / "serve.html"
+
+    # ── Create global hub file ────────────────────────────────────────────────
+
+    ensure_global_ash()
+
+    # ── Write QUICKSTART.md ───────────────────────────────────────────────────
+
+    fn = filename  # user's actual filename, e.g. "alex.md"
+    qs_path = Path.home() / ".ash" / "QUICKSTART.md"
+    qs = f"""\
+# devme — Quick Start
+
+Your companion filename is **`{fn}`**. Wherever the docs say `me.md`, that means `{fn}` on your system.
+
+## First steps
+
+```sh
+ash serve                    # open the interface at http://localhost:7272
+ash init ~/projects/myapp    # create ~/{fn} for a project (uses your configured filename)
+```
+
+## Common commands
+
+```sh
+ash serve                    # start the local interface
+ash init [path]              # create a companion file in a directory
+ash update [path]            # refresh navigation links
+ash refresh                  # rebuild navigation in all registered files
+ash push [path]              # write Status/Next Steps back to a project overview
+ash watch [path]             # continuous two-way sync with project overview on save
+ash upgrade [--all]          # migrate older companion files to current format
+ash rename-overview <name>   # rename project overview files across registered projects
+ash rm [path]                # remove a directory from the mesh index
+ash rm [path] --delete       # remove from index and delete the companion file from disk
+```
+
+## Config
+
+Your config is at `~/.ash/config.json`. Edit it to change any setting.
+See the README for a full config reference: https://github.com/err404memory/devme.md
+
+## Docs
+
+Full manual: open `MANUAL.md` from the devme repo, or browse the README on GitHub.
+"""
+    qs_path.write_text(qs)
+    print(f"✓  Quick start written to {qs_path}")
+
+    # ── Done ──────────────────────────────────────────────────────────────────
+
+    print(f"""
+Setup complete. Your companion filename is `{fn}`.
+
+Next:
+  ash serve              — open the interface
+  ash init [path]        — create your first companion file
+
+Your personalized quick reference: {qs_path}
+""")
+
+
 # ── Entry point ───────────────────────────────────────────────────────────────
 
 def main():
     p = argparse.ArgumentParser(
         prog="ash",
-        description="Personal context CLI for the ash.md system.",
+        description="Personal context CLI for the devme companion file system.",
     )
     sub = p.add_subparsers(dest="command", required=True)
 
-    init_p = sub.add_parser("init", help="Initialize ash.md in a directory")
+    install_p = sub.add_parser("install", help="Interactive first-run setup")
+    install_p.add_argument("--force", action="store_true", help="Overwrite existing config")
+
+    init_p = sub.add_parser("init", help="Initialize a companion file in a directory")
     init_p.add_argument("path", nargs="?", default=".", help="Target directory (default: .)")
-    init_p.add_argument("--force", action="store_true", help="Overwrite existing ash.md")
+    init_p.add_argument("--force", action="store_true", help="Overwrite existing companion file")
 
     update_p = sub.add_parser("update", help="Refresh navigation + pull from _OVERVIEW.md")
     update_p.add_argument("path", nargs="?", default=".", help="Target directory (default: .)")
 
-    push_p = sub.add_parser("push", help="Push Status/Next Steps from ash.md to _OVERVIEW.md")
+    push_p = sub.add_parser("push", help="Push Status/Next Steps from companion file to _OVERVIEW.md")
     push_p.add_argument("path", nargs="?", default=".", help="Target directory (default: .)")
 
-    upgrade_p = sub.add_parser("upgrade", help="Patch structure of existing ash.md files (tree, collapsible sections)")
+    upgrade_p = sub.add_parser("upgrade", help="Patch structure of existing companion files (tree, collapsible sections)")
     upgrade_p.add_argument("path", nargs="?", default=".", help="Target directory (default: .)")
-    upgrade_p.add_argument("--all", action="store_true", help="Upgrade all registered ash.md files")
+    upgrade_p.add_argument("--all", action="store_true", help="Upgrade all registered companion files")
 
     rename_p = sub.add_parser("rename-overview", help="Rename overview files (e.g. _OVERVIEW.md → devme.md)")
     rename_p.add_argument("new_name", help="Target filename (e.g. devme.md)")
     rename_p.add_argument("path", nargs="?", default=None, help="Directory to search (default: all registered projects)")
 
-    watch_p = sub.add_parser("watch", help="Auto-push to overview file whenever ash.md is saved")
+    watch_p = sub.add_parser("watch", help="Auto-push to overview file whenever companion file is saved")
     watch_p.add_argument("path", nargs="?", default=".", help="Target directory (default: .)")
     watch_p.add_argument("--interval", type=float, default=2.0, help="Poll interval in seconds (default: 2)")
 
-    sub.add_parser("refresh", help="Refresh navigation in all registered ash.md files")
+    sub.add_parser("refresh", help="Refresh navigation in all registered companion files")
 
     rm_p = sub.add_parser("rm", help="Remove a companion file from the global index")
     rm_p.add_argument("path", nargs="?", default=".", help="Directory or companion file path (default: .)")
     rm_p.add_argument("--delete", action="store_true", help="Also delete the companion file from disk")
 
-    serve_p = sub.add_parser("serve", help="Start local web server for the ash.md mesh")
+    serve_p = sub.add_parser("serve", help="Start local web server for the companion file mesh")
     serve_p.add_argument("--port", type=int, default=7272, help="Port to serve on (default: 7272)")
     serve_p.add_argument("--no-browser", action="store_true", help="Don't open browser automatically")
 
     args = p.parse_args()
-    if args.command == "init":
+    if args.command == "install":
+        cmd_install(args)
+    elif args.command == "init":
         cmd_init(args)
     elif args.command == "update":
         cmd_update(args)

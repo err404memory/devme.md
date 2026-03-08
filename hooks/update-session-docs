@@ -30,10 +30,10 @@ from pathlib import Path
 
 def _load_config() -> dict:
     defaults = {
-        "filename":   "ash.md",
+        "filename":   "me.md",
         "hub_dir":    "~/.ash",
-        "hub_label":  "Personal Context Hub",
-        "username":   "Ash",
+        "hub_label":  "My Context Hub",
+        "username":   "you",
     }
     cfg_path = Path.home() / ".ash" / "config.json"
     if cfg_path.exists():
@@ -61,6 +61,15 @@ _BLOCKED_DIRS = {
     Path("/sys"),
     Path("/proc"),
 }
+
+def _is_safe_project_dir(path: Path) -> bool:
+    """Return True only if path is a safe user project directory to write into."""
+    if path in _BLOCKED_DIRS:
+        return False
+    # Skip any path containing a dotfile component (e.g. ~/.ssh, ~/.aws, ~/.gnupg)
+    if any(part.startswith(".") for part in path.parts):
+        return False
+    return path.exists() and path.is_dir()
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
@@ -215,7 +224,9 @@ def append_to_claude_md(claude_path: Path, date_str: str, tool: str, takeaway: s
     """Append a brief 2-line session note to CLAUDE.md (append-only, never modifies existing content)."""
     if not claude_path.exists():
         return
-    block = f"\n<!-- session: {date_str} | {tool} -->\n<!-- Last session: {takeaway} -->\n"
+    # Sanitize takeaway so it cannot break out of an HTML comment
+    safe_takeaway = takeaway.replace("-->", "—>")
+    block = f"\n<!-- session: {date_str} | {tool} -->\n<!-- Last session: {safe_takeaway} -->\n"
     with open(claude_path, "a") as f:
         f.write(block)
     print(f"  Noted: {claude_path}")
@@ -241,7 +252,7 @@ def main():
 
     # 2. Per-project companion file
     #    Skip if cwd is a blocked system/home directory
-    if cwd not in _BLOCKED_DIRS and cwd.exists() and cwd.is_dir():
+    if _is_safe_project_dir(cwd):
         project_ash  = cwd / MD_FILE
         newly_created = ensure_project_ash(project_ash)
         append_to_session_log(project_ash, date_str, tool, summary)
@@ -249,7 +260,7 @@ def main():
             register_project_in_global(project_ash, dt)
 
     # 3. CLAUDE.md — brief 2-line note only
-    if cwd not in _BLOCKED_DIRS:
+    if _is_safe_project_dir(cwd):
         takeaway = extract_takeaway(summary)
         if takeaway:
             append_to_claude_md(cwd / "CLAUDE.md", date_str, tool, takeaway)

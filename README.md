@@ -4,11 +4,15 @@ Context notes for your filesystem. Every directory gets a companion markdown fil
 
 ---
 
+> **Note:** Throughout this documentation, `me.md` is used as the companion filename placeholder.
+> After running `ash install`, your actual configured filename (e.g. `alex.md`) will be used on your system.
+> Wherever docs say `me.md`, substitute your configured filename.
+
 ## The idea
 
 A well-organized filesystem is still opaque without context. What is this directory for? Why does this file exist? What was in progress when you last had this project open?
 
-devme gives every directory a companion file (`you.md`, named for you — configurable). That file holds whatever context belongs to that location: status, next steps, a live directory tree, a change log, a session log. Each file links to its neighbors — parent, siblings, children — forming a navigable mesh across your whole filesystem.
+devme gives every directory a companion file (`me.md`, named for you — configurable). That file holds whatever context belongs to that location: status, next steps, a live directory tree, a change log, a session log. Each file links to its neighbors — parent, siblings, children — forming a navigable mesh across your whole filesystem.
 
 The annotation layer is the core feature. You can attach a note to any file or directory in the interface without modifying it. The note is stored separately from your files, appears inline when you open that location in the viewer, and travels with the path across sessions. It's the equivalent of a sticky note on a manila folder in a filing cabinet — the folder's contents are unchanged, but the context is there every time you pull it out: what it's for, what's in progress, what to watch out for.
 
@@ -33,36 +37,21 @@ hooks/       Session auto-logging pipeline (optional, see below)
 **Requirements:** Python 3.10+, a modern browser.
 
 ```sh
-# Place the CLI on your PATH
 cp ash ~/.local/bin/ash
 chmod +x ~/.local/bin/ash
-
-# Copy the web interface
-mkdir -p ~/.ash
-cp serve.html ~/.ash/serve.html
+ash install
 ```
 
-Create `~/.ash/config.json`:
+`ash install` copies the web interface, creates `~/.ash/config.json` by prompting you for your settings, creates your global hub file, and writes a personalized `~/.ash/QUICKSTART.md` with your actual companion filename substituted throughout.
 
-```json
-{
-  "username": "you",
-  "filename": "you.md",
-  "hub_label": "My Mesh",
-  "hub_dir": "~/.ash",
-  "editor": "zed",
-  "accent_color": "#7b96e8",
-  "timezone": "America/New_York"
-}
-```
-
-`filename` is the companion file devme creates and looks for in each directory. Set it to your name, your initials, or anything consistent — that filename becomes your file everywhere.
+Run it from the directory where you cloned or downloaded the repo so it can find `serve.html`.
 
 ---
 
 ## Usage
 
 ```sh
+ash install                  # interactive first-run setup (run once)
 ash serve                    # start the local interface (default: localhost:7272)
 ash init [path]              # create a companion file in a directory
 ash update [path]            # refresh navigation links + pull status from project overview
@@ -101,6 +90,8 @@ ash rm [path] --delete       # remove from index and also delete the companion f
 
 ## whatdoing sync
 
+> **Optional.** This section only applies if you use the `whatdoing` project manager. Skip it if you don't.
+
 devme integrates with [`whatdoing`](https://github.com/err404memory/whatdoing) project overview files. These are the detailed per-project documents maintained by whatdoing — tech stack, commands, status, roadmap, blockers — the full project record. The companion file is intentionally lighter: navigation, annotations, session log, and a live window into the overview's current status.
 
 When a `project.md` or `_OVERVIEW.md` exists in a directory, `ash init` pulls its **Status** and **Next Steps** fields into the companion file automatically. From that point you can keep them in sync:
@@ -119,19 +110,21 @@ The project overview remains the source of truth. The companion file surfaces wh
 
 ## Session auto-logging
 
-The `hooks/` directory contains scripts that close the loop between your terminal sessions and your companion files. On every terminal exit, your session is summarized by an AI and appended to the relevant companion file's Session Log automatically — no manual notes required.
+The `hooks/` directory contains an optional pipeline that scans your local AI tool logs and terminal session logs — whatever exists on your system — and appends context to your companion files' Session Log automatically.
+
+devme has no AI dependency. The hooks are log parsers. On terminal exit, `session-close` checks known locations for recently-closed sessions from Claude Code, Kilo, Codex, Aider, Ghostty, tmux, or any other tool you configure. It reads those logs and extracts what was discussed — decisions, ideas, generated code, session summaries — then appends that context to the companion file for the relevant project directory. No external service is contacted. Nothing is sent anywhere.
 
 ### How it works
 
 ```
 terminal exit
-  └─ session-close              (bash EXIT trap)
-       ├─ parse-ai-session      (Claude Code JSONL → summary via claude -p)
-       └─ parse-ghostty-session (terminal log → summary via claude -p)
-            └─ update-session-docs  (appends summary to companion files)
+  └─ session-close                   (bash EXIT trap — scans all configured tool dirs)
+       ├─ parse-ai-session           (JSONL logs: Claude Code, Kilo, Codex, Aider, …)
+       └─ parse-ghostty-session      (text logs: Ghostty, script, tmux, …)
+            └─ update-session-docs   (appends context to companion files)
 ```
 
-The session summary is structured (Key Points, Decisions, Takeaway) and written into the `## Session Log` section of both the global hub and the project companion file for whatever directory you were working in.
+The summary is written into the `## Session Log` section of both the global hub file and the project companion file for whatever directory you were working in.
 
 ### Install
 
@@ -164,9 +157,25 @@ set-hook -g after-split-window 'run "~/.local/bin/tmux-start-log #{session_name}
 
 ### Config
 
-`vault_dir` sets where full structured session archives are saved (organized by `YYYY-MM/`). Set it to a path on your server mount for cross-device access. The companion file Session Log gets a concise summary; the vault gets the full structured record.
+Set `vault_dir` in `~/.ash/config.json` to control where full session archives are saved (organised by `YYYY-MM/`). A path on a server mount keeps archives accessible across devices:
 
-The session detection threshold defaults to 300 seconds. Override with:
+```json
+"vault_dir": "~/server/sessions"
+```
+
+To add or override AI tool log directories, set `tool_paths` in `~/.ash/config.json`:
+
+```json
+"tool_paths": {
+  "claude": "~/.claude/projects",
+  "kilo":   "~/.kilo/projects",
+  "codex":  "~/.codex/sessions"
+}
+```
+
+Any tool directory that exists on your system will be scanned automatically. Remove a key to disable scanning that tool. See `hooks/session-close` for a list of supported tools and instructions for adding new ones.
+
+The session detection window defaults to 300 seconds. Override with:
 
 ```sh
 export ASH_SESSION_THRESHOLD=600   # 10 minutes
@@ -174,7 +183,7 @@ export ASH_SESSION_THRESHOLD=600   # 10 minutes
 
 ### Dolphin integration
 
-`hooks/ash-init` and `hooks/ash-open` are service menu wrappers. They fork immediately so Dolphin doesn't freeze, use `notify-send` for desktop feedback, and resolve the `ash` binary from `$PATH`.
+`hooks/ash-init` and `hooks/ash-open` are service menu wrappers for KDE Dolphin. They fork immediately so Dolphin doesn't freeze, use `notify-send` for desktop feedback, and resolve the `ash` binary from `$PATH`.
 
 ```sh
 cp hooks/ash-init  ~/.local/bin/
@@ -192,9 +201,9 @@ chmod +x ~/.local/bin/ash-init ~/.local/bin/ash-open
 # project-name
 
 ## Navigation
-- [My Mesh](~/.ash/you.md)
-- Up: [parent-dir](/path/to/parent/you.md)
-- Nearby: [sibling-project](/path/to/sibling/you.md)
+- [My Mesh](~/.ash/me.md)
+- Up: [parent-dir](/path/to/parent/me.md)
+- Nearby: [sibling-project](/path/to/sibling/me.md)
 
 > [README](./README.md)
 
@@ -248,8 +257,8 @@ The AI Notes section automatically detects `CLAUDE.md`, session summary files, a
 
 | Key | Default | Description |
 |-----|---------|-------------|
-| `username` | `"ash"` | Displayed in the sidebar header |
-| `filename` | `"ash.md"` | Companion filename looked for in each directory |
+| `username` | `"you"` | Displayed in the sidebar header |
+| `filename` | `"me.md"` | Companion filename looked for in each directory |
 | `hub_label` | `"Context Mesh"` | Browser tab and sidebar title |
 | `hub_dir` | `"~/.ash"` | Location of the global companion file and `serve.html` |
 | `editor` | `"code"` | Editor launched by the "Open in …" button |
