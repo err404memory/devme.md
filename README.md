@@ -42,6 +42,11 @@ chmod +x ~/.local/bin/ash
 ash install
 ```
 
+> **PATH note:** If `ash: command not found` after copying, add `~/.local/bin` to your shell PATH:
+> ```sh
+> echo 'export PATH="$HOME/.local/bin:$PATH"' >> ~/.bashrc && source ~/.bashrc
+> ```
+
 `ash install` copies the web interface, creates `~/.ash/config.json` by prompting you for your settings, creates your global hub file, and writes a personalized `~/.ash/QUICKSTART.md` with your actual companion filename substituted throughout.
 
 Run it from the directory where you cloned or downloaded the repo so it can find `serve.html`.
@@ -94,11 +99,11 @@ ash rm [path] --delete       # remove from index and also delete the companion f
 
 devme integrates with [`whatdoing`](https://github.com/err404memory/whatdoing) project overview files. These are the detailed per-project documents maintained by whatdoing — tech stack, commands, status, roadmap, blockers — the full project record. The companion file is intentionally lighter: navigation, annotations, session log, and a live window into the overview's current status.
 
-When a `project.md` or `_OVERVIEW.md` exists in a directory, `ash init` pulls its **Status** and **Next Steps** fields into the companion file automatically. From that point you can keep them in sync:
+When a `devme.md`, `PROJECT.md`, `overview.md`, or `_OVERVIEW.md` exists in a directory, `ash init` pulls its **Status** and **Next Steps** fields into the companion file automatically. From that point you can keep them in sync:
 
 ```sh
-ash update [path]   # pull latest from project.md into companion file
-ash push [path]     # write Status/Next Steps changes back to project.md
+ash update [path]   # pull latest from devme.md / _OVERVIEW.md into companion file
+ash push [path]     # write Status/Next Steps changes back to devme.md / _OVERVIEW.md
 ash watch [path]    # continuous two-way sync on file save
 ```
 
@@ -259,7 +264,7 @@ The AI Notes section automatically detects `CLAUDE.md`, session summary files, a
 |-----|---------|-------------|
 | `username` | `"you"` | Displayed in the sidebar header |
 | `filename` | `"me.md"` | Companion filename looked for in each directory |
-| `hub_label` | `"Context Mesh"` | Browser tab and sidebar title |
+| `hub_label` | `"My Context Hub"` | Browser tab and sidebar title |
 | `hub_dir` | `"~/.ash"` | Location of the global companion file and `serve.html` |
 | `editor` | `"code"` | Editor launched by the "Open in …" button |
 | `accent_color` | `"#7b96e8"` | Primary accent color throughout the UI |

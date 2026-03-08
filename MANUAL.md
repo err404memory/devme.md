@@ -34,6 +34,11 @@ cp ash ~/.local/bin/ash
 chmod +x ~/.local/bin/ash
 ```
 
+> **PATH note:** If `ash: command not found`, add `~/.local/bin` to your shell first:
+> ```sh
+> echo 'export PATH="$HOME/.local/bin:$PATH"' >> ~/.bashrc && source ~/.bashrc
+> ```
+
 Verify it works:
 
 ```sh
