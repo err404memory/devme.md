@@ -1,30 +1,30 @@
 #!/bin/bash
-# ash-init — initialize a companion file in a directory.
+# devme-init — initialize a companion file in a directory.
 # Designed as a Dolphin service menu action but works standalone.
 #
-# Install: copy to ~/.local/bin/ash-init and chmod +x
+# Install: copy to ~/.local/bin/devme-init and chmod +x
 # Dolphin: see hooks/dolphin/ for .desktop service menu files
 #
-# Usage: ash-init [directory]   (defaults to $PWD)
+# Usage: devme-init [directory]   (defaults to $PWD)
 
 DIR="${1:-$PWD}"
 
-# Resolve ash binary — prefer local install, fall back to PATH
-ASH_BIN="${ASH_BIN:-}"
-if [ -z "$ASH_BIN" ]; then
-    ASH_BIN="$(command -v ash 2>/dev/null)"
+# Resolve devme binary — prefer local install, fall back to PATH
+DEVME_BIN="${DEVME_BIN:-}"
+if [ -z "$DEVME_BIN" ]; then
+    DEVME_BIN="$(command -v devme 2>/dev/null)"
 fi
-if [ -z "$ASH_BIN" ] || [ ! -x "$ASH_BIN" ]; then
-    echo "ash not found. Install it to \$PATH or set ASH_BIN." >&2
+if [ -z "$DEVME_BIN" ] || [ ! -x "$DEVME_BIN" ]; then
+    echo "devme not found. Install it to \$PATH or set DEVME_BIN." >&2
     # Try to show error via notify-send if in a desktop session
     command -v notify-send &>/dev/null && \
-        notify-send "devme" "ash not found — install it to \$PATH" --icon=dialog-error
+        notify-send "devme" "devme not found — install it to \$PATH" --icon=dialog-error
     exit 1
 fi
 
 # Fork immediately so Dolphin doesn't freeze waiting for completion
 (
-    if "$ASH_BIN" init "$DIR"; then
+    if "$DEVME_BIN" init "$DIR"; then
         command -v notify-send &>/dev/null && \
             notify-send "devme" "Context file initialized in $(basename "$DIR")" --icon=document-new
     else

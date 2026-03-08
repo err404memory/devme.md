@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-ash — personal context CLI for the devme companion file system.
+devme — personal context CLI for the devme companion file system.
 
 Subcommands:
   init [path]     Initialize a companion file in the target directory
@@ -8,9 +8,9 @@ Subcommands:
   refresh         Update navigation in all registered companion files
 
 Usage:
-  ash init [path] [--force]
-  ash update [path]
-  ash refresh
+  devme init [path] [--force]
+  devme update [path]
+  devme refresh
 """
 
 import argparse
@@ -26,12 +26,12 @@ from pathlib import Path
 # ── Config ────────────────────────────────────────────────────────────────────
 
 def _load_config() -> dict:
-    """Load ~/.ash/config.json, falling back to defaults for any missing key."""
+    """Load ~/.devme/config.json, falling back to defaults for any missing key."""
     defaults = {
         "username":              "you",
         "filename":              "me.md",
         "hub_label":             "Personal Context Hub",
-        "hub_dir":               "~/.ash",
+        "hub_dir":               "~/.devme",
         "editor":                "zed",
         "accent_color":          "#7b96e8",
         "timezone":              "America/Los_Angeles",
@@ -39,7 +39,10 @@ def _load_config() -> dict:
         "server_prefix_local":   "",        # e.g. "~/mnt/server" — local mount path
         "server_prefix_remote":  "",        # e.g. "/home/user"  — path on the remote machine
     }
-    cfg_path = Path.home() / ".ash" / "config.json"
+    cfg_path = Path.home() / ".devme" / "config.json"
+    legacy_cfg_path = Path.home() / ".ash" / "config.json"
+    if not cfg_path.exists() and legacy_cfg_path.exists():
+        cfg_path = legacy_cfg_path
     if cfg_path.exists():
         import json
         try:
@@ -212,7 +215,7 @@ def ts(now: datetime = None) -> str:
 # ── Change Log ────────────────────────────────────────────────────────────────
 
 def append_changelog_row(ash_path: Path, event: str, now: datetime = None) -> None:
-    """Append a timestamped row to the Change Log table in an ash.md file."""
+    """Append a timestamped row to the Change Log table in a companion file."""
     if not ash_path.exists():
         return
     lines = ash_path.read_text().splitlines()
@@ -235,7 +238,7 @@ def append_changelog_row(ash_path: Path, event: str, now: datetime = None) -> No
 # ── Relative discovery ────────────────────────────────────────────────────────
 
 def collect_parent_links(target_dir: Path) -> list:
-    """Walk up toward $HOME collecting (name, ash_path) for each dir with ash.md."""
+    """Walk up toward $HOME collecting (name, path) for each dir with a companion file."""
     home = Path.home()
     links = []
     current = target_dir.parent
@@ -250,7 +253,7 @@ def collect_parent_links(target_dir: Path) -> list:
 
 
 def collect_children_links(target_dir: Path) -> list:
-    """Scan immediate subdirectories for ash.md files."""
+    """Scan immediate subdirectories for companion files."""
     links = []
     try:
         for entry in sorted(target_dir.iterdir()):
@@ -264,7 +267,7 @@ def collect_children_links(target_dir: Path) -> list:
 
 
 def collect_sibling_links(target_dir: Path) -> list:
-    """Scan sibling directories (same parent, excluding self) for ash.md files."""
+    """Scan sibling directories (same parent, excluding self) for companion files."""
     links = []
     parent = target_dir.parent
     try:
@@ -295,7 +298,7 @@ def build_navigation_lines(parents: list, children: list, siblings: list) -> lis
 
 
 def replace_navigation_section(ash_path: Path, nav_lines: list, now: datetime = None) -> None:
-    """Replace the ## Navigation section body in an existing ash.md."""
+    """Replace the ## Navigation section body in an existing companion file."""
     if not ash_path.exists():
         return
     lines = ash_path.read_text().splitlines()
@@ -320,7 +323,7 @@ def replace_navigation_section(ash_path: Path, nav_lines: list, now: datetime = 
     new_block = ["## Navigation", ""] + nav_lines + [""]
     lines[start:end] = new_block
     ash_path.write_text("\n".join(lines) + "\n")
-    append_changelog_row(ash_path, "Navigation refreshed by `ash update`", now)
+    append_changelog_row(ash_path, "Navigation refreshed by `devme update`", now)
 
 
 def replace_directory_section(ash_path: Path) -> bool:
@@ -375,7 +378,7 @@ def _insert_nav_link(ash_path: Path, new_line: str, event: str, now: datetime = 
 
 
 def backpropagate_links(new_ash: Path, parents: list, siblings: list, now: datetime = None) -> None:
-    """Update nearby ash.md files to include a link back to the new file."""
+    """Update nearby companion files to include a link back to the new file."""
     new_name = new_ash.parent.name
 
     for _name, parent_ash in parents[:1]:  # Immediate parent only
@@ -397,7 +400,7 @@ def backpropagate_links(new_ash: Path, parents: list, siblings: list, now: datet
         print(f"  Updated sibling: {sibling_ash}")
 
 
-# ── Global ash.md ─────────────────────────────────────────────────────────────
+# ── Global companion file ─────────────────────────────────────────────────────
 
 GLOBAL_TEMPLATE = """\
 # {hub_label}
@@ -423,7 +426,7 @@ GLOBAL_TEMPLATE = """\
 
 
 def ensure_global_ash() -> None:
-    """Create ~/.ash/ash.md if it doesn't exist."""
+    """Create the global companion file if it doesn't exist."""
     ASH_DIR.mkdir(parents=True, exist_ok=True)
     if not GLOBAL_ASH.exists():
         GLOBAL_ASH.write_text(GLOBAL_TEMPLATE.format(
@@ -522,7 +525,7 @@ def update_global_entry(project_ash: Path, now: datetime = None) -> None:
 
 
 def list_registered_paths() -> list:
-    """Return all ash.md paths registered in the global index."""
+    """Return all companion file paths registered in the global index."""
     if not GLOBAL_ASH.exists():
         return []
     paths = []
@@ -580,7 +583,7 @@ def parse_overview(dir_path: Path) -> dict:
 
 
 def _extract_ash_section(ash_path: Path, section: str) -> str:
-    """Return the body text of a ## section in ash.md."""
+    """Return the body text of a ## section in a companion file."""
     in_section = False
     body = []
     for line in ash_path.read_text().splitlines():
@@ -595,7 +598,7 @@ def _extract_ash_section(ash_path: Path, section: str) -> str:
 
 
 def replace_ash_section(ash_path: Path, section: str, new_body: str) -> None:
-    """Replace the body of a ## section in ash.md, preserving the heading."""
+    """Replace the body of a ## section in a companion file, preserving the heading."""
     lines = ash_path.read_text().splitlines()
     start = None
     end = None
@@ -617,7 +620,7 @@ def replace_ash_section(ash_path: Path, section: str, new_body: str) -> None:
 
 
 def pull_from_overview(ash_path: Path, now: datetime = None) -> bool:
-    """Pull Status and Next Steps from _OVERVIEW.md into ash.md. Returns True if updated."""
+    """Pull Status and Next Steps from _OVERVIEW.md into a companion file. Returns True if updated."""
     data = parse_overview(ash_path.parent)
     if not data:
         return False
@@ -645,7 +648,7 @@ def pull_from_overview(ash_path: Path, now: datetime = None) -> bool:
 
 
 def push_to_overview(ash_path: Path, now: datetime = None) -> bool:
-    """Push Status and Next Steps from ash.md back to the overview file. Returns True if updated."""
+    """Push Status and Next Steps from a companion file back to the overview file. Returns True if updated."""
     overview = find_overview(ash_path.parent)
     if overview is None:
         return False
@@ -840,7 +843,7 @@ def build_template(
 
 | Date | Event |
 |------|-------|
-| {ts(now)} | Created by `ash init` |{sync_note}
+| {ts(now)} | Created by `devme init` |{sync_note}
 
 ---
 
@@ -983,7 +986,7 @@ def cmd_refresh(_args):
 # ── Subcommand: upgrade ───────────────────────────────────────────────────────
 
 def cmd_upgrade(args):
-    """Patch structural elements of existing ash.md files without touching content."""
+    """Patch structural elements of existing companion files without touching content."""
     target = Path(args.path).expanduser().resolve()
 
     if args.all:
@@ -1009,7 +1012,7 @@ def cmd_upgrade(args):
 
 
 def _upgrade_file(ash_path: Path) -> bool:
-    """Apply structural upgrades to a single ash.md in-place."""
+    """Apply structural upgrades to a single companion file in-place."""
     now = datetime.now()
     content = ash_path.read_text()
     changed = False
@@ -1111,13 +1114,13 @@ def cmd_rename_overview(args):
         print("No overview files found to rename.")
 
     if renamed and new_name not in OVERVIEW_CANDIDATES:
-        print(f"\nNote: add '{new_name}' to OVERVIEW_CANDIDATES in ~/.local/bin/ash to find it.")
+        print(f"\nNote: add '{new_name}' to OVERVIEW_CANDIDATES in ~/.local/bin/devme to find it.")
 
 
 # ── Subcommand: watch ────────────────────────────────────────────────────────
 
 def cmd_watch(args):
-    """Poll ash.md and auto-push to _OVERVIEW.md whenever it's modified."""
+    """Poll companion file and auto-push to _OVERVIEW.md whenever it's modified."""
     import time
 
     target = Path(args.path).expanduser().resolve()
@@ -1162,9 +1165,9 @@ _SERVE_HTML_PATH = ASH_DIR / "serve.html"
 _WIZARD_HTML_PATH = ASH_DIR / "wizard.html"
 
 def _load_serve_html() -> str:
-    """Load serve.html from ~/.ash/, substituting current config values."""
+    """Load serve.html from ~/.devme/, substituting current config values."""
     if not _SERVE_HTML_PATH.exists():
-        print(f"Error: {_SERVE_HTML_PATH} not found. Re-run ash to restore it.", file=sys.stderr)
+        print(f"Error: {_SERVE_HTML_PATH} not found. Re-run devme to restore it.", file=sys.stderr)
         sys.exit(1)
     cfg = _load_config()  # re-read on every request so edits reflect without restart
     hub_dir = Path(cfg["hub_dir"]).expanduser()
@@ -1187,19 +1190,19 @@ def _load_serve_html() -> str:
 
 
 def _load_wizard_html() -> str:
-    """Load wizard.html from ~/.ash/."""
+    """Load wizard.html from ~/.devme/."""
     if not _WIZARD_HTML_PATH.exists():
         # Fallback: minimal error page
         return """<!DOCTYPE html><html><body style="font-family:sans-serif;padding:2rem;background:#0d0f14;color:#c0c8d8">
 <h2>wizard.html not found</h2>
-<p>Run <code>ash install</code> from the devme repo directory so it can find <code>wizard.html</code>:</p>
+<p>Run <code>devme install</code> from the devme repo directory so it can find <code>wizard.html</code>:</p>
 <pre style="background:#13151d;padding:1rem;border-radius:6px;color:#7b96e8">cd /path/to/devme.md
-ash install</pre></body></html>"""
+devme install</pre></body></html>"""
     return _WIZARD_HTML_PATH.read_text()
 
 
 def _run_install(data: dict) -> dict:
-    """Write config and initialise ~/.ash/ from wizard POST data. Reloads module globals."""
+    """Write config and initialise ~/.devme/ from wizard POST data. Reloads module globals."""
     import shutil
 
     filename = data.get("filename", "me.md").strip()
@@ -1217,7 +1220,7 @@ def _run_install(data: dict) -> dict:
         "accent_color": data.get("accent_color", "#7b96e8").strip() or "#7b96e8",
     }
 
-    cfg_path = Path.home() / ".ash" / "config.json"
+    cfg_path = Path.home() / ".devme" / "config.json"
     cfg_path.parent.mkdir(parents=True, exist_ok=True)
     cfg_path.write_text(json.dumps(config, indent=2) + "\n")
 
@@ -1241,25 +1244,25 @@ def _run_install(data: dict) -> dict:
         f"Wherever the docs say `me.md`, that means `{fn}` on your system.\n\n"
         f"## First steps\n\n"
         f"```sh\n"
-        f"ash serve                    # open the interface at http://localhost:7272\n"
-        f"ash init ~/projects/my-app   # create a companion file\n"
+        f"devme serve                    # open the interface at http://localhost:7272\n"
+        f"devme init ~/projects/my-app   # create a companion file\n"
         f"```\n\n"
         f"## Commands\n\n"
         f"```sh\n"
-        f"ash serve                    # start the local interface\n"
-        f"ash install                  # re-run setup wizard\n"
-        f"ash init [path]              # create a companion file in a directory\n"
-        f"ash update [path]            # refresh navigation links\n"
-        f"ash refresh                  # rebuild navigation in all registered files\n"
-        f"ash push [path]              # write Status/Next Steps back to project overview\n"
-        f"ash watch [path]             # continuous sync with project overview on save\n"
-        f"ash upgrade [--all]          # migrate older companion files to current format\n"
-        f"ash rename-overview <name>   # rename project overview files\n"
-        f"ash rm [path]                # remove a directory from the mesh index\n"
-        f"ash rm [path] --delete       # remove from index and delete the companion file\n"
+        f"devme serve                    # start the local interface\n"
+        f"devme install                  # re-run setup wizard\n"
+        f"devme init [path]              # create a companion file in a directory\n"
+        f"devme update [path]            # refresh navigation links\n"
+        f"devme refresh                  # rebuild navigation in all registered files\n"
+        f"devme push [path]              # write Status/Next Steps back to project overview\n"
+        f"devme watch [path]             # continuous sync with project overview on save\n"
+        f"devme upgrade [--all]          # migrate older companion files to current format\n"
+        f"devme rename-overview <name>   # rename project overview files\n"
+        f"devme rm [path]                # remove a directory from the mesh index\n"
+        f"devme rm [path] --delete       # remove from index and delete the companion file\n"
         f"```\n\n"
-        f"## Config: `~/.ash/config.json`\n\n"
-        f"Edit this file to change any setting. Re-run `ash install` to use the wizard again.\n\n"
+        f"## Config: `~/.devme/config.json`\n\n"
+        f"Edit this file to change any setting. Re-run `devme install` to use the wizard again.\n\n"
         f"## Docs\n\n"
         f"README: https://github.com/err404memory/devme.md\n"
     )
@@ -1310,8 +1313,10 @@ def _make_handler():
             p = parsed.path
 
             if p == '/':
-                cfg_path = Path.home() / '.ash' / 'config.json'
-                if not cfg_path.exists() and _WIZARD_HTML_PATH.exists():
+                cfg_path = Path.home() / '.devme' / 'config.json'
+                legacy_cfg_path = Path.home() / '.ash' / 'config.json'
+                configured = cfg_path.exists() or legacy_cfg_path.exists()
+                if not configured and _WIZARD_HTML_PATH.exists():
                     self._redirect('/setup')
                 else:
                     self._redirect(f'/view?path={GLOBAL_ASH}')
@@ -1441,11 +1446,13 @@ def cmd_serve(args):
     threading.Thread(target=_serve_watcher, daemon=True).start()
     server = http.server.ThreadingHTTPServer(('localhost', port), _make_handler())
     url = f'http://localhost:{port}'
-    print(f'ash serve  →  {url}')
+    print(f'devme serve  →  {url}')
     print('Watching all registered companion files. Ctrl+C to stop.')
-    cfg_path = Path.home() / ".ash" / "config.json"
+    cfg_path = Path.home() / ".devme" / "config.json"
+    legacy_cfg_path = Path.home() / ".ash" / "config.json"
     wizard_exists = _WIZARD_HTML_PATH.exists()
-    open_url = f'{url}/setup' if (not cfg_path.exists() and wizard_exists) else url
+    configured = cfg_path.exists() or legacy_cfg_path.exists()
+    open_url = f'{url}/setup' if (not configured and wizard_exists) else url
     if not args.no_browser:
         threading.Timer(0.4, lambda: webbrowser.open(open_url)).start()
     try:
@@ -1496,7 +1503,7 @@ def cmd_install(args):
     import threading
     import webbrowser
 
-    ash_dir = Path.home() / ".ash"
+    ash_dir = Path.home() / ".devme"
     wizard_dest = ash_dir / "wizard.html"
     serve_dest  = ash_dir / "serve.html"
 
@@ -1513,7 +1520,7 @@ def cmd_install(args):
             elif not dest.exists():
                 print(f"Error: {fname} not found.", file=sys.stderr)
                 print("Run this command from the devme repo directory:", file=sys.stderr)
-                print("  ash install", file=sys.stderr)
+                print("  devme install", file=sys.stderr)
                 sys.exit(1)
 
     port = getattr(args, 'port', 7272)
@@ -1537,7 +1544,7 @@ def cmd_install(args):
 
 def main():
     p = argparse.ArgumentParser(
-        prog="ash",
+        prog="devme",
         description="Personal context CLI for the devme companion file system.",
     )
     sub = p.add_subparsers(dest="command", required=True)

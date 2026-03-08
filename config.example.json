@@ -1,10 +1,10 @@
 {
-  "_instructions": "Copy this file to ~/.ash/config.json and fill in your values. Keys starting with _ are ignored.",
+  "_instructions": "Copy this file to ~/.devme/config.json and fill in your values. Keys starting with _ are ignored.",
 
   "username":             "yourname",
   "filename":             "me.md",
   "hub_label":            "My Context Hub",
-  "hub_dir":              "~/.ash",
+  "hub_dir":              "~/.devme",
   "editor":               "code",
   "accent_color":         "#7b96e8",
   "timezone":             "UTC",

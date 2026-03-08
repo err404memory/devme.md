@@ -15,7 +15,7 @@ write a dedicated parse-{toolname} script following the same pattern.
 
 Install: copy to ~/.local/bin/parse-ai-session and chmod +x
 
-Config (via ~/.ash/config.json):
+Config (via ~/.devme/config.json):
   vault_dir   — where session archives are saved (default: ~/Documents/sessions)
   tool_paths  — override default log directories per tool (see session-close)
 """
@@ -33,7 +33,10 @@ from pathlib import Path
 
 def _load_config() -> dict:
     defaults = {"vault_dir": str(Path.home() / "Documents" / "sessions")}
-    cfg_path = Path.home() / ".ash" / "config.json"
+    cfg_path = Path.home() / ".devme" / "config.json"
+    legacy_cfg_path = Path.home() / ".ash" / "config.json"
+    if not cfg_path.exists() and legacy_cfg_path.exists():
+        cfg_path = legacy_cfg_path
     if cfg_path.exists():
         try:
             loaded = json.loads(cfg_path.read_text())

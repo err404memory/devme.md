@@ -11,7 +11,7 @@ Input:  ~/.logs/terminal/YYYY-MM/DATETIME-ghostty.log  (from `script -q -f`)
 Output: <vault_dir>/YYYY-MM/DATETIME-ghostty-<cwd-slug>.md
         + companion file update via update-session-docs
 
-Config: reads vault_dir from ~/.ash/config.json (default: ~/Documents/sessions)
+Config: reads vault_dir from ~/.devme/config.json (default: ~/Documents/sessions)
 """
 
 import hashlib
@@ -28,7 +28,10 @@ from pathlib import Path
 
 def _load_config() -> dict:
     defaults = {"vault_dir": str(Path.home() / "Documents" / "sessions")}
-    cfg_path = Path.home() / ".ash" / "config.json"
+    cfg_path = Path.home() / ".devme" / "config.json"
+    legacy_cfg_path = Path.home() / ".ash" / "config.json"
+    if not cfg_path.exists() and legacy_cfg_path.exists():
+        cfg_path = legacy_cfg_path
     if cfg_path.exists():
         try:
             loaded = json.loads(cfg_path.read_text())

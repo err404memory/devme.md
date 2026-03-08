@@ -15,7 +15,7 @@ Output locations:
 
 Install: copy to ~/.local/bin/update-session-docs and chmod +x
 
-Config: reads ~/.ash/config.json for filename, hub_dir, and hub_label.
+Config: reads ~/.devme/config.json for filename, hub_dir, and hub_label.
 """
 
 import argparse
@@ -31,11 +31,14 @@ from pathlib import Path
 def _load_config() -> dict:
     defaults = {
         "filename":   "me.md",
-        "hub_dir":    "~/.ash",
+        "hub_dir":    "~/.devme",
         "hub_label":  "My Context Hub",
         "username":   "you",
     }
-    cfg_path = Path.home() / ".ash" / "config.json"
+    cfg_path = Path.home() / ".devme" / "config.json"
+    legacy_cfg_path = Path.home() / ".ash" / "config.json"
+    if not cfg_path.exists() and legacy_cfg_path.exists():
+        cfg_path = legacy_cfg_path
     if cfg_path.exists():
         try:
             loaded = json.loads(cfg_path.read_text())
@@ -44,10 +47,10 @@ def _load_config() -> dict:
             pass
     return defaults
 
-CFG       = _load_config()
-ASH_DIR   = Path(CFG["hub_dir"]).expanduser()
-MD_FILE   = CFG["filename"]
-GLOBAL_ASH = ASH_DIR / MD_FILE
+CFG        = _load_config()
+DEVME_DIR  = Path(CFG["hub_dir"]).expanduser()
+MD_FILE    = CFG["filename"]
+GLOBAL_FILE = DEVME_DIR / MD_FILE
 
 # Directories we will never write a companion file into
 _BLOCKED_DIRS = {
@@ -109,9 +112,9 @@ def ts(now: datetime = None) -> str:
 
 def ensure_global_ash() -> None:
     """Create the global companion file if it doesn't exist."""
-    ASH_DIR.mkdir(parents=True, exist_ok=True)
-    if not GLOBAL_ASH.exists():
-        GLOBAL_ASH.write_text(
+    DEVME_DIR.mkdir(parents=True, exist_ok=True)
+    if not GLOBAL_FILE.exists():
+        GLOBAL_FILE.write_text(
             f"# {CFG['hub_label']}\n\n"
             "> Personal context tracking across all devices and projects.\n"
             "> Auto-updated by session-close on terminal exit.\n\n"
@@ -123,12 +126,12 @@ def ensure_global_ash() -> None:
             "## Session Log\n\n"
             "<!-- Auto-appended below by update-session-docs -->\n"
         )
-        print(f"Created: {GLOBAL_ASH}")
+        print(f"Created: {GLOBAL_FILE}")
 
 
 def register_project_in_global(project_ash: Path, now: datetime) -> None:
     """Add a project row to the global Project Index table (idempotent)."""
-    content = GLOBAL_ASH.read_text()
+    content = GLOBAL_FILE.read_text()
     if str(project_ash) in content:
         return
 
@@ -157,7 +160,7 @@ def register_project_in_global(project_ash: Path, now: datetime) -> None:
     insert_after = last_row if last_row >= 0 else sep_row
     if insert_after >= 0:
         lines.insert(insert_after + 1, new_row)
-        GLOBAL_ASH.write_text("\n".join(lines) + "\n")
+        GLOBAL_FILE.write_text("\n".join(lines) + "\n")
         print(f"  Registered {name} in global index")
 
 
@@ -170,7 +173,7 @@ def ensure_project_ash(project_ash: Path) -> bool:
     project_name = project_ash.parent.name
     project_ash.write_text(
         f"# {project_name}\n\n"
-        f"> [Global context]({GLOBAL_ASH})\n\n"
+        f"> [Global context]({GLOBAL_FILE})\n\n"
         "## Status\n\n"
         "_No status set._\n\n"
         "## Next Steps\n\n"
@@ -248,7 +251,7 @@ def main():
 
     # 1. Global companion file
     ensure_global_ash()
-    append_to_session_log(GLOBAL_ASH, date_str, tool, summary)
+    append_to_session_log(GLOBAL_FILE, date_str, tool, summary)
 
     # 2. Per-project companion file
     #    Skip if cwd is a blocked system/home directory

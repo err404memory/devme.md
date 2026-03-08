@@ -5,7 +5,7 @@ This manual walks you through installing and using devme for the first time.
 ---
 
 > **Note:** Throughout this documentation, `me.md` is used as the companion filename placeholder.
-> After running `ash install`, your actual configured filename (e.g. `alex.md`) will be used on your system.
+> After running `devme install`, your actual configured filename (e.g. `alex.md`) will be used on your system.
 > Wherever docs say `me.md`, substitute your configured filename.
 
 ## What is devme?
@@ -30,11 +30,11 @@ The section schema in each companion file — Status, Next Steps, Change Log, Se
 **1. Copy the CLI to your PATH:**
 
 ```sh
-cp ash ~/.local/bin/ash
-chmod +x ~/.local/bin/ash
+cp devme ~/.local/bin/devme
+chmod +x ~/.local/bin/devme
 ```
 
-> **PATH note:** If `ash: command not found`, add `~/.local/bin` to your shell first:
+> **PATH note:** If `devme: command not found`, add `~/.local/bin` to your shell first:
 > ```sh
 > echo 'export PATH="$HOME/.local/bin:$PATH"' >> ~/.bashrc && source ~/.bashrc
 > ```
@@ -42,13 +42,13 @@ chmod +x ~/.local/bin/ash
 Verify it works:
 
 ```sh
-ash --help
+devme --help
 ```
 
 **2. Run the setup wizard:**
 
 ```sh
-ash install
+devme install
 ```
 
 Run this from the directory where you cloned devme, so it can find `serve.html` and `wizard.html`. A browser window opens with a step-by-step setup wizard. It walks you through:
@@ -58,18 +58,20 @@ Run this from the directory where you cloned devme, so it can find `serve.html` 
 - A live preview of the interface accent color as you pick it
 
 On finish, the wizard:
-- Creates `~/.ash/config.json` with your values
-- Copies `serve.html` and `wizard.html` to `~/.ash/`
-- Creates your global hub file (`~/.ash/<your-filename>`)
-- Writes `~/.ash/QUICKSTART.md` — a personalized quick reference
+- Creates `~/.devme/config.json` with your values
+- Copies `serve.html` and `wizard.html` to `~/.devme/`
+- Creates your global hub file (`~/.devme/<your-filename>`)
+- Writes `~/.devme/QUICKSTART.md` — a personalized quick reference
 
-To reconfigure, run `ash install --force` or edit `~/.ash/config.json` directly.
+To reconfigure, run `devme install --force` or edit `~/.devme/config.json` directly.
+
+> **Migration note:** `devme` now uses `~/.devme/` by default. Legacy `~/.ash/config.json` is still read automatically for compatibility. Run `devme install --force` to regenerate files in `~/.devme/`.
 
 ---
 
 ## Configuration
 
-The config file lives at `~/.ash/config.json`. The CLI reads it on every run, falling back to defaults for any missing key.
+The config file lives at `~/.devme/config.json`. The CLI reads it on every run, falling back to defaults for any missing key.
 
 ### Minimal config
 
@@ -87,11 +89,11 @@ The config file lives at `~/.ash/config.json`. The CLI reads it on every run, fa
 | `username` | `"you"` | Displayed in the sidebar header |
 | `filename` | `"me.md"` | Companion filename created in each directory |
 | `hub_label` | `"My Context Hub"` | Browser tab and sidebar title |
-| `hub_dir` | `"~/.ash"` | Where your global companion file and `serve.html` live |
+| `hub_dir` | `"~/.devme"` | Where your global companion file and `serve.html` live |
 | `editor` | `"code"` | Editor launched by the "Open in …" button in the interface |
 | `accent_color` | `"#7b96e8"` | Primary accent color throughout the UI |
 | `timezone` | `"UTC"` | Timezone used for timestamps in companion files |
-| `notes_file` | `~/.ash/file-notes.json` | Where annotations are stored (leave blank for default) |
+| `notes_file` | `~/.devme/file-notes.json` | Where annotations are stored (leave blank for default) |
 | `server_prefix_local` | `""` | Local mount path for a remote filesystem — see Multi-device below |
 | `server_prefix_remote` | `""` | Corresponding path on the remote — see Multi-device below |
 
@@ -108,7 +110,7 @@ The config file lives at `~/.ash/config.json`. The CLI reads it on every run, fa
 **Start the interface:**
 
 ```sh
-ash serve
+devme serve
 ```
 
 Open the URL shown in the terminal (default: `http://localhost:7272`). You'll see an empty sidebar — no projects yet.
@@ -116,7 +118,7 @@ Open the URL shown in the terminal (default: `http://localhost:7272`). You'll se
 **Initialize your first companion file:**
 
 ```sh
-ash init ~/projects/my-project
+devme init ~/projects/my-project
 ```
 
 This creates `~/projects/my-project/me.md` (or whatever your `filename` is set to), registers it in your global index, and back-propagates links to any neighboring companion files.
@@ -128,22 +130,22 @@ Reload the interface — your project appears in the sidebar. Click it to see th
 ## Daily Workflow
 
 ```sh
-ash serve                    # open the interface in your browser
-ash init [path]              # create a companion file in a new directory
-ash update [path]            # refresh navigation links in an existing companion file
-ash refresh                  # rebuild navigation in all registered companion files
-ash push [path]              # write Status/Next Steps back to a project overview file
-ash watch [path]             # keep companion file and project overview in sync on save
-ash upgrade [--all]          # migrate older companion files to the current format
-ash rename-overview <name>   # rename project overview files across all registered projects
+devme serve                    # open the interface in your browser
+devme init [path]              # create a companion file in a new directory
+devme update [path]            # refresh navigation links in an existing companion file
+devme refresh                  # rebuild navigation in all registered companion files
+devme push [path]              # write Status/Next Steps back to a project overview file
+devme watch [path]             # keep companion file and project overview in sync on save
+devme upgrade [--all]          # migrate older companion files to the current format
+devme rename-overview <name>   # rename project overview files across all registered projects
 ```
 
 **Typical session:**
-1. `ash serve` — open the interface
+1. `devme serve` — open the interface
 2. Browse to the project you're working on — check Status, Next Steps, Session Log
 3. Do your work
 4. Append a note to Session Log in the companion file
-5. `ash update [path]` if you changed the project overview
+5. `devme update [path]` if you changed the project overview
 
 The interface live-reloads whenever a companion file changes, so you can keep it open alongside your editor.
 
@@ -155,20 +157,20 @@ Annotations are notes you attach to files and directories without modifying them
 
 In the interface, click the **✦** icon next to any item in the directory tree to add or edit a note. The note for the current page renders as a styled box below the title.
 
-Notes are stored in `~/.ash/file-notes.json` (configurable via `notes_file`). They are never written into your repos or folders.
+Notes are stored in `~/.devme/file-notes.json` (configurable via `notes_file`). They are never written into your repos or folders.
 
 ---
 
 ## Companion File Format
 
-`ash init` creates a structured markdown file with a fixed section schema:
+`devme init` creates a structured markdown file with a fixed section schema:
 
 ```markdown
 # project-name
 `/path/to/project`
 
 ## Navigation
-- [My Context Hub](~/.ash/me.md)
+- [My Context Hub](~/.devme/me.md)
 - Up: [parent-dir](/path/to/parent/me.md)
 - Nearby: [sibling-project](/path/to/sibling/me.md)
 - Down: [child-project](/path/to/child/me.md)
@@ -191,7 +193,7 @@ _No next steps defined._
 
 | Date | Event |
 |------|-------|
-| 2026-03-08 14:30 | Created by `ash init` |
+| 2026-03-08 14:30 | Created by `devme init` |
 
 ---
 
@@ -227,12 +229,12 @@ project-name/
 
 If you use [`whatdoing`](https://github.com/err404memory/whatdoing) for project management, devme can sync with its overview files (`project.md` or `_OVERVIEW.md`).
 
-When a project overview exists in a directory, `ash init` automatically pulls **Status** and **Next Steps** into the companion file. After that:
+When a project overview exists in a directory, `devme init` automatically pulls **Status** and **Next Steps** into the companion file. After that:
 
 ```sh
-ash update [path]   # pull latest status from project.md into companion file
-ash push [path]     # write your edits back to project.md
-ash watch [path]    # two-way sync on file save
+devme update [path]   # pull latest status from project.md into companion file
+devme push [path]     # write your edits back to project.md
+devme watch [path]    # two-way sync on file save
 ```
 
 The project overview stays the source of truth. The companion file surfaces what matters right now.
@@ -300,7 +302,7 @@ Entries stack newest-last inside the `## Session Log` section and are rendered a
 
 ## Troubleshooting
 
-**`ash: command not found`**
+**`devme: command not found`**
 Make sure `~/.local/bin` is on your PATH. Add this to your shell config (`~/.bashrc` or `~/.zshrc`) and restart your terminal:
 
 ```sh
@@ -308,19 +310,19 @@ export PATH="$HOME/.local/bin:$PATH"
 ```
 
 **Interface loads but sidebar is empty**
-Run `ash init [path]` on at least one directory first. The sidebar only shows registered projects.
+Run `devme init [path]` on at least one directory first. The sidebar only shows registered projects.
 
 **Companion file exists but doesn't appear in sidebar**
-Run `ash refresh` to rebuild the global index. This picks up any files that were created manually or outside the CLI.
+Run `devme refresh` to rebuild the global index. This picks up any files that were created manually or outside the CLI.
 
 **Annotations not saving**
-Check that `~/.ash/` is writable and that `notes_file` (if customized) points to a valid path.
+Check that `~/.devme/` is writable and that `notes_file` (if customized) points to a valid path.
 
 **Timestamps are wrong**
 Set `timezone` in your config to your local timezone. Use IANA format, e.g. `"America/New_York"`, `"Europe/London"`, `"Asia/Tokyo"`. A list is available at [Wikipedia: List of tz database time zones](https://en.wikipedia.org/wiki/List_of_tz_database_time_zones).
 
-**`ash serve` port already in use**
-Another process is using port 7272. You can kill it or temporarily change the port with `ash serve --port 7273`.
+**`devme serve` port already in use**
+Another process is using port 7272. You can kill it or temporarily change the port with `devme serve --port 7273`.
 
 ---
 

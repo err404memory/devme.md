@@ -1865,10 +1865,15 @@ document.getElementById('open-btn').addEventListener('click', () =>
 window.addEventListener('popstate', e => { if (e.state && e.state.path) loadFile(e.state.path); });
 
 /* ── Bookmarks ────────────────────────────────────────────────────────────── */
-let bookmarks = JSON.parse(localStorage.getItem('ash-bookmarks') || '[]');
+const BOOKMARKS_KEY = 'devme-bookmarks';
+const BOOKMARKS_LEGACY_KEY = 'ash-bookmarks';
+if (!localStorage.getItem(BOOKMARKS_KEY) && localStorage.getItem(BOOKMARKS_LEGACY_KEY)) {
+  localStorage.setItem(BOOKMARKS_KEY, localStorage.getItem(BOOKMARKS_LEGACY_KEY));
+}
+let bookmarks = JSON.parse(localStorage.getItem(BOOKMARKS_KEY) || '[]');
 
 function saveBookmarks() {
-  localStorage.setItem('ash-bookmarks', JSON.stringify(bookmarks));
+  localStorage.setItem(BOOKMARKS_KEY, JSON.stringify(bookmarks));
 }
 
 function bookmarkName(path) {
@@ -1940,7 +1945,10 @@ loadNotes().then(() => { loadMesh(); loadFile(INIT); setupSSE(); });
 // ── Sidebar resize ──────────────────────────────────────────────────────────
 (function() {
   const handle = document.getElementById('sidebar-resize');
-  const MIN = 180, MAX = 520, KEY = 'ash-sidebar-w';
+  const MIN = 180, MAX = 520, KEY = 'devme-sidebar-w', LEGACY_KEY = 'ash-sidebar-w';
+  if (!localStorage.getItem(KEY) && localStorage.getItem(LEGACY_KEY)) {
+    localStorage.setItem(KEY, localStorage.getItem(LEGACY_KEY));
+  }
   const setWidth = w => {
     w = Math.max(MIN, Math.min(MAX, w));
     document.body.style.setProperty('--sidebar-w', w + 'px');

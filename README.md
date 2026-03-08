@@ -5,7 +5,7 @@ Context notes for your filesystem. Every directory gets a companion markdown fil
 ---
 
 > **Note:** Throughout this documentation, `me.md` is used as the companion filename placeholder.
-> After running `ash install`, your actual configured filename (e.g. `alex.md`) will be used on your system.
+> After running `devme install`, your actual configured filename (e.g. `alex.md`) will be used on your system.
 > Wherever docs say `me.md`, substitute your configured filename.
 
 ## The idea
@@ -25,9 +25,9 @@ That same structure makes the files easy for AI assistants to read and maintain 
 ## Structure
 
 ```
-ash          CLI — init, serve, sync, manage
-serve.html   Web interface (single-file SPA, loaded from ~/.ash/)
-wizard.html  Setup wizard (browser-based, opened by ash install)
+devme        CLI — init, serve, sync, manage
+serve.html   Web interface (single-file SPA, loaded from ~/.devme/)
+wizard.html  Setup wizard (browser-based, opened by devme install)
 hooks/       Session auto-logging pipeline (optional, see below)
 ```
 
@@ -38,39 +38,41 @@ hooks/       Session auto-logging pipeline (optional, see below)
 **Requirements:** Python 3.10+, a modern browser.
 
 ```sh
-cp ash ~/.local/bin/ash
-chmod +x ~/.local/bin/ash
-ash install
+cp devme ~/.local/bin/devme
+chmod +x ~/.local/bin/devme
+devme install
 ```
 
-> **PATH note:** If `ash: command not found` after copying, add `~/.local/bin` to your shell PATH:
+> **PATH note:** If `devme: command not found` after copying, add `~/.local/bin` to your shell PATH:
 > ```sh
 > echo 'export PATH="$HOME/.local/bin:$PATH"' >> ~/.bashrc && source ~/.bashrc
 > ```
 
-`ash install` opens a browser-based setup wizard. It walks you through choosing your companion filename, editor, timezone, and accent color — with a live preview of the interface as you configure it. Run it from the directory where you cloned the repo so it can find `serve.html` and `wizard.html`.
+> **Migration note:** `devme` now uses `~/.devme/` by default. Legacy `~/.ash/config.json` is still read automatically for compatibility. Run `devme install --force` to regenerate files in `~/.devme/`.
 
-On finish, the wizard creates `~/.ash/config.json`, copies the web interface, creates your global hub file, and writes a personalized `~/.ash/QUICKSTART.md`.
+`devme install` opens a browser-based setup wizard. It walks you through choosing your companion filename, editor, timezone, and accent color — with a live preview of the interface as you configure it. Run it from the directory where you cloned the repo so it can find `serve.html` and `wizard.html`.
+
+On finish, the wizard creates `~/.devme/config.json`, copies the web interface, creates your global hub file, and writes a personalized `~/.devme/QUICKSTART.md`.
 
 ---
 
 ## Usage
 
 ```sh
-ash install                  # browser-based setup wizard (run once, or ash install --force to redo)
-ash serve                    # start the local interface (default: localhost:7272)
-ash init [path]              # create a companion file in a directory
-ash update [path]            # refresh navigation links + pull status from project overview
-ash push [path]              # write status changes back to the project overview file
-ash watch [path]             # keep companion file and project overview in sync on save
-ash refresh                  # rebuild navigation in all registered companion files
-ash upgrade [--all]          # migrate older companion files to the current format
-ash rename-overview <name>   # rename project overview files across registered projects
-ash rm [path]                # remove a directory from the mesh index
-ash rm [path] --delete       # remove from index and also delete the companion file
+devme install                  # browser-based setup wizard (run once, or devme install --force to redo)
+devme serve                    # start the local interface (default: localhost:7272)
+devme init [path]              # create a companion file in a directory
+devme update [path]            # refresh navigation links + pull status from project overview
+devme push [path]              # write status changes back to the project overview file
+devme watch [path]             # keep companion file and project overview in sync on save
+devme refresh                  # rebuild navigation in all registered companion files
+devme upgrade [--all]          # migrate older companion files to the current format
+devme rename-overview <name>   # rename project overview files across registered projects
+devme rm [path]                # remove a directory from the mesh index
+devme rm [path] --delete       # remove from index and also delete the companion file
 ```
 
-`ash init` registers the new file in your global index and back-propagates: neighboring companion files in parent and sibling directories automatically gain links to the new one.
+`devme init` registers the new file in your global index and back-propagates: neighboring companion files in parent and sibling directories automatically gain links to the new one.
 
 ---
 
@@ -88,7 +90,7 @@ ash rm [path] --delete       # remove from index and also delete the companion f
 
 <!-- screenshot: navigation section showing Up (purple), Nearby (amber), Down (green) color-coded links between project directories -->
 
-**Navigation** — companion files link to each other by directory relationship. Parent directories appear in purple (↑), siblings in amber (↔), children in green (↓). The mesh self-assembles as you run `ash init` in new locations.
+**Navigation** — companion files link to each other by directory relationship. Parent directories appear in purple (↑), siblings in amber (↔), children in green (↓). The mesh self-assembles as you run `devme init` in new locations.
 
 **Live reload** — an SSE connection watches all registered files and reloads the viewer automatically when any of them change.
 
@@ -100,12 +102,12 @@ ash rm [path] --delete       # remove from index and also delete the companion f
 
 devme integrates with [`whatdoing`](https://github.com/err404memory/whatdoing) project overview files. These are the detailed per-project documents maintained by whatdoing — tech stack, commands, status, roadmap, blockers — the full project record. The companion file is intentionally lighter: navigation, annotations, session log, and a live window into the overview's current status.
 
-When a `devme.md`, `PROJECT.md`, `overview.md`, or `_OVERVIEW.md` exists in a directory, `ash init` pulls its **Status** and **Next Steps** fields into the companion file automatically. From that point you can keep them in sync:
+When a `devme.md`, `PROJECT.md`, `overview.md`, or `_OVERVIEW.md` exists in a directory, `devme init` pulls its **Status** and **Next Steps** fields into the companion file automatically. From that point you can keep them in sync:
 
 ```sh
-ash update [path]   # pull latest from devme.md / _OVERVIEW.md into companion file
-ash push [path]     # write Status/Next Steps changes back to devme.md / _OVERVIEW.md
-ash watch [path]    # continuous two-way sync on file save
+devme update [path]   # pull latest from devme.md / _OVERVIEW.md into companion file
+devme push [path]     # write Status/Next Steps changes back to devme.md / _OVERVIEW.md
+devme watch [path]    # continuous two-way sync on file save
 ```
 
 <!-- screenshot: Status card in the viewer showing project status pulled from whatdoing's project.md — Status and Next Steps rendered as a single bordered card -->
@@ -163,13 +165,13 @@ set-hook -g after-split-window 'run "~/.local/bin/tmux-start-log #{session_name}
 
 ### Config
 
-Set `vault_dir` in `~/.ash/config.json` to control where full session archives are saved (organised by `YYYY-MM/`). A path on a server mount keeps archives accessible across devices:
+Set `vault_dir` in `~/.devme/config.json` to control where full session archives are saved (organised by `YYYY-MM/`). A path on a server mount keeps archives accessible across devices:
 
 ```json
 "vault_dir": "~/server/sessions"
 ```
 
-To add or override AI tool log directories, set `tool_paths` in `~/.ash/config.json`:
+To add or override AI tool log directories, set `tool_paths` in `~/.devme/config.json`:
 
 ```json
 "tool_paths": {
@@ -184,30 +186,32 @@ Any tool directory that exists on your system will be scanned automatically. Rem
 The session detection window defaults to 300 seconds. Override with:
 
 ```sh
-export ASH_SESSION_THRESHOLD=600   # 10 minutes
+export DEVME_SESSION_THRESHOLD=600   # 10 minutes
 ```
+
+For backward compatibility, `ASH_SESSION_THRESHOLD` is still accepted.
 
 ### Dolphin integration
 
-`hooks/ash-init` and `hooks/ash-open` are service menu wrappers for KDE Dolphin. They fork immediately so Dolphin doesn't freeze, use `notify-send` for desktop feedback, and resolve the `ash` binary from `$PATH`.
+`hooks/devme-init` and `hooks/devme-open` are service menu wrappers for KDE Dolphin. They fork immediately so Dolphin doesn't freeze, use `notify-send` for desktop feedback, and resolve the `devme` binary from `$PATH`.
 
 ```sh
-cp hooks/ash-init  ~/.local/bin/
-cp hooks/ash-open  ~/.local/bin/
-chmod +x ~/.local/bin/ash-init ~/.local/bin/ash-open
+cp hooks/devme-init  ~/.local/bin/
+cp hooks/devme-open  ~/.local/bin/
+chmod +x ~/.local/bin/devme-init ~/.local/bin/devme-open
 ```
 
 ---
 
 ## Companion file format
 
-`ash init` generates a structured file with a fixed section schema:
+`devme init` generates a structured file with a fixed section schema:
 
 ````markdown
 # project-name
 
 ## Navigation
-- [My Mesh](~/.ash/me.md)
+- [My Mesh](~/.devme/me.md)
 - Up: [parent-dir](/path/to/parent/me.md)
 - Nearby: [sibling-project](/path/to/sibling/me.md)
 
@@ -229,7 +233,7 @@ _No next steps defined._
 
 | Date | Event |
 |------|-------|
-| 2026-03-08 14:30 | Created by `ash init` |
+| 2026-03-08 14:30 | Created by `devme init` |
 
 ---
 
@@ -266,11 +270,11 @@ The AI Notes section automatically detects `CLAUDE.md`, session summary files, a
 | `username` | `"you"` | Displayed in the sidebar header |
 | `filename` | `"me.md"` | Companion filename looked for in each directory |
 | `hub_label` | `"My Context Hub"` | Browser tab and sidebar title |
-| `hub_dir` | `"~/.ash"` | Location of the global companion file and `serve.html` |
+| `hub_dir` | `"~/.devme"` | Location of the global companion file and `serve.html` |
 | `editor` | `"code"` | Editor launched by the "Open in …" button |
 | `accent_color` | `"#7b96e8"` | Primary accent color throughout the UI |
 | `timezone` | `"UTC"` | Timezone for timestamps |
-| `notes_file` | `~/.ash/file-notes.json` | Where annotations are stored |
+| `notes_file` | `~/.devme/file-notes.json` | Where annotations are stored |
 | `vault_dir` | `~/Documents/sessions` | Where full session archives are saved by the hooks |
 | `server_prefix_local` | `""` | Local mount path for a remote filesystem (e.g. `~/server`) |
 | `server_prefix_remote` | `""` | Corresponding path on the remote machine (e.g. `/home/user`) |
@@ -296,9 +300,9 @@ If your filesystem is mounted across machines at different paths (e.g. a server 
 
 ### 2026-03-08
 
-**Session auto-logging pipeline** — added `hooks/` with 7 scripts: `session-close` (bash EXIT trap), `parse-ai-session` (Claude Code JSONL → structured summary), `parse-ghostty-session` (terminal log → structured summary), `update-session-docs` (appends summaries to companion files), `tmux-start-log` (tmux pipe-pane logging), `ash-init` and `ash-open` (Dolphin service menu wrappers). Every terminal session is now automatically summarized and written into the Session Log of the relevant companion file.
+**Session auto-logging pipeline** — added `hooks/` with 7 scripts: `session-close` (bash EXIT trap), `parse-ai-session` (Claude Code JSONL → structured summary), `parse-ghostty-session` (terminal log → structured summary), `update-session-docs` (appends summaries to companion files), `tmux-start-log` (tmux pipe-pane logging), `devme-init` and `devme-open` (Dolphin service menu wrappers). Every terminal session is now automatically summarized and written into the Session Log of the relevant companion file.
 
-**`ash rm`** — new subcommand removes a directory from the global mesh index. `--delete` flag also removes the companion file from disk.
+**`devme rm`** — new subcommand removes a directory from the global mesh index. `--delete` flag also removes the companion file from disk.
 
 **Visible status placeholders** — freshly initialized companion files now show `_No status set._` and `_No next steps defined._` instead of invisible HTML comments that rendered as blank cards.
 

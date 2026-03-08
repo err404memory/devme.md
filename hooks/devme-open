@@ -1,0 +1,53 @@
+#!/bin/bash
+# devme-open — open a directory's companion file in the devme web viewer.
+# Starts devme serve automatically if it's not already running.
+# Designed as a Dolphin service menu action but works standalone.
+#
+# Install: copy to ~/.local/bin/devme-open and chmod +x
+# Dolphin: see hooks/dolphin/ for .desktop service menu files
+#
+# Usage: devme-open [directory]   (defaults to $PWD)
+
+DIR="${1:-$PWD}"
+PORT="${DEVME_PORT:-7272}"
+
+# Resolve devme binary
+DEVME_BIN="${DEVME_BIN:-}"
+if [ -z "$DEVME_BIN" ]; then
+    DEVME_BIN="$(command -v devme 2>/dev/null)"
+fi
+
+# Resolve companion filename from config (default: me.md)
+MD_FILE="me.md"
+CONFIG="$HOME/.devme/config.json"
+LEGACY_CONFIG="$HOME/.ash/config.json"
+if [ ! -f "$CONFIG" ] && [ -f "$LEGACY_CONFIG" ]; then
+    CONFIG="$LEGACY_CONFIG"
+fi
+if [ -f "$CONFIG" ] && command -v python3 &>/dev/null; then
+    _fn=$(python3 -c "
+import json, sys
+try:
+    d = json.load(open('$CONFIG'))
+    print(d.get('filename', 'me.md'))
+except Exception:
+    print('me.md')
+" 2>/dev/null)
+    [ -n "$_fn" ] && MD_FILE="$_fn"
+fi
+
+# Fork immediately so Dolphin doesn't freeze
+(
+    # Start server if not already listening
+    if ! (echo > /dev/tcp/localhost/$PORT) 2>/dev/null; then
+        if [ -z "$DEVME_BIN" ] || [ ! -x "$DEVME_BIN" ]; then
+            command -v notify-send &>/dev/null && \
+                notify-send "devme" "devme not found — install it to \$PATH" --icon=dialog-error
+            exit 1
+        fi
+        "$DEVME_BIN" serve --port "$PORT" --no-browser &
+        sleep 0.8
+    fi
+    xdg-open "http://localhost:${PORT}/view?path=${DIR}/${MD_FILE}"
+) &
+disown
