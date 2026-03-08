@@ -1,0 +1,1411 @@
+#!/usr/bin/env python3
+"""
+ash — personal context CLI for the ash.md system.
+
+Subcommands:
+  init [path]     Initialize an ash.md in the target directory
+  update [path]   Refresh navigation section of an existing ash.md
+  refresh         Update navigation in all registered ash.md files
+
+Usage:
+  ash init [path] [--force]
+  ash update [path]
+  ash refresh
+"""
+
+import argparse
+import json
+import os
+import re
+import subprocess
+import sys
+from datetime import datetime
+from pathlib import Path
+
+
+# ── Config ────────────────────────────────────────────────────────────────────
+
+def _load_config() -> dict:
+    """Load ~/.ash/config.json, falling back to defaults for any missing key."""
+    defaults = {
+        "username":              "Ash",
+        "filename":              "me.md",
+        "hub_label":             "Personal Context Hub",
+        "hub_dir":               "~/.me",
+        "editor":                "zed",
+        "accent_color":          "#7b96e8",
+        "timezone":              "America/Los_Angeles",
+        "notes_file":            "",        # empty = use hub_dir/file-notes.json
+        "server_prefix_local":   "",        # e.g. "~/server" on satellite
+        "server_prefix_remote":  "",        # e.g. "/home/ashes" on jeffrey
+    }
+    cfg_path = Path.home() / ".ash" / "config.json"
+    if cfg_path.exists():
+        import json
+        try:
+            loaded = json.loads(cfg_path.read_text())
+            defaults.update({k: v for k, v in loaded.items() if not k.startswith("_")})
+        except Exception:
+            pass
+    return defaults
+
+CFG = _load_config()
+
+# ── Constants ─────────────────────────────────────────────────────────────────
+
+ASH_DIR    = Path(CFG["hub_dir"]).expanduser()
+MD_FILE    = CFG["filename"]           # e.g. "ash.md" or "steve.md"
+GLOBAL_ASH = ASH_DIR / MD_FILE
+
+NOISE_DIRS = {".git", "node_modules", "__pycache__", "venv", ".venv", "dist", "build", "out", "flutter", "go"}
+
+# Overview file — preferred name first, fallbacks for migration
+OVERVIEW_CANDIDATES = ["devme.md", "overview.md", "_OVERVIEW.md", "PROJECT.md"]
+
+AI_FILENAME_RE = re.compile(
+    r"^(CLAUDE\.md|.*-session-.*\.md|.*-summary.*\.md|.*claude.*\.md|.*\.ai\.md)$",
+    re.IGNORECASE,
+)
+
+AI_CONTENT_PATTERNS = [
+    r"##\s*Key Points",
+    r"##\s*Takeaway",
+    r"<!--\s*session:",
+    r"##\s*Summary",
+    r"I've implemented",
+    r"here's what was done",
+    r"here is what was done",
+]
+
+
+# ── File annotations ──────────────────────────────────────────────────────────
+
+def _get_notes_file() -> Path:
+    cfg = _load_config()
+    nf = cfg.get("notes_file", "")
+    return Path(nf).expanduser() if nf else ASH_DIR / "file-notes.json"
+
+
+def _path_to_key(abs_path: str) -> str:
+    """Convert an absolute local path to a device-agnostic storage key."""
+    cfg = _load_config()
+    for prefix_key in ("server_prefix_local", "server_prefix_remote"):
+        prefix = cfg.get(prefix_key, "")
+        if not prefix:
+            continue
+        exp = str(Path(prefix).expanduser()).rstrip("/")
+        if abs_path == exp or abs_path.startswith(exp + "/"):
+            return "server:" + abs_path[len(exp):].lstrip("/")
+    return abs_path
+
+
+def _key_to_path(key: str) -> str:
+    """Expand a storage key to the local absolute path for this device."""
+    if not key.startswith("server:"):
+        return key
+    rel = key[7:]
+    cfg = _load_config()
+    local = cfg.get("server_prefix_local", "")
+    if local:
+        return str(Path(local).expanduser() / rel)
+    remote = cfg.get("server_prefix_remote", "")
+    if remote:
+        return remote.rstrip("/") + "/" + rel
+    return key  # no prefix configured — return raw
+
+
+def _build_inode_map() -> dict:
+    """Scan registered mesh directories for a (dev, ino) → path map.
+    Skips paths on the server FUSE mount to avoid infinite remote scans."""
+    cfg = _load_config()
+    server_local = cfg.get("server_prefix_local", "")
+    server_prefix = str(Path(server_local).expanduser()) if server_local else None
+    imap: dict = {}
+    for rp in list_registered_paths():
+        # Skip FUSE-mounted server paths — recursive scan would go over the network
+        if server_prefix and str(rp).startswith(server_prefix):
+            continue
+        try:
+            for entry in rp.parent.rglob("*"):
+                try:
+                    st = entry.stat()
+                    imap[(st.st_dev, st.st_ino)] = str(entry)
+                except OSError:
+                    pass
+        except OSError:
+            pass
+    return imap
+
+
+def _load_notes() -> dict:
+    """Load notes, reconcile moved local files, return {local_abs_path: text}."""
+    nf = _get_notes_file()
+    if not nf.exists():
+        return {}
+    raw: dict = json.loads(nf.read_text())
+    result: dict = {}
+    changed = False
+    orphans: dict = {}
+
+    for key, val in raw.items():
+        text = val if isinstance(val, str) else val.get("text", "")
+        local_path = _key_to_path(key)
+        is_server = key.startswith("server:")
+        if not is_server and isinstance(val, dict) and "ino" in val:
+            try:
+                st = Path(local_path).stat()
+                if st.st_ino == val["ino"] and st.st_dev == val.get("dev", st.st_dev):
+                    result[local_path] = text
+                    continue
+                # Path exists but inode differs — file was replaced in place, keep
+                result[local_path] = text
+                continue
+            except OSError:
+                orphans[key] = val
+                continue
+        result[local_path] = text
+
+    if orphans:
+        imap = _build_inode_map()
+        for key, val in orphans.items():
+            match = imap.get((val.get("dev"), val.get("ino")))
+            if match:
+                new_key = _path_to_key(match)
+                raw[new_key] = val
+                del raw[key]
+                result[match] = val.get("text", "")
+                changed = True
+
+    if changed:
+        nf.write_text(json.dumps(raw, indent=2, ensure_ascii=False))
+
+    return result
+
+
+def _save_note(path: str, text: str) -> None:
+    """Save (or delete if text is empty) an annotation for the given path."""
+    nf = _get_notes_file()
+    raw: dict = json.loads(nf.read_text()) if nf.exists() else {}
+    key = _path_to_key(path)
+    if text:
+        entry: dict = {"text": text}
+        if not key.startswith("server:"):
+            try:
+                st = Path(path).stat()
+                entry["ino"] = st.st_ino
+                entry["dev"] = st.st_dev
+            except OSError:
+                pass
+        raw[key] = entry
+    else:
+        raw.pop(key, None)
+    nf.parent.mkdir(parents=True, exist_ok=True)
+    nf.write_text(json.dumps(raw, indent=2, ensure_ascii=False))
+
+
+# ── Timestamp ─────────────────────────────────────────────────────────────────
+
+def ts(now: datetime = None) -> str:
+    return (now or datetime.now()).strftime("%Y-%m-%d %H:%M")
+
+
+# ── Change Log ────────────────────────────────────────────────────────────────
+
+def append_changelog_row(ash_path: Path, event: str, now: datetime = None) -> None:
+    """Append a timestamped row to the Change Log table in an ash.md file."""
+    if not ash_path.exists():
+        return
+    lines = ash_path.read_text().splitlines()
+    in_changelog = False
+    last_table_row = -1
+    for i, line in enumerate(lines):
+        if line.strip() in ("## Change Log", "<summary>Change Log</summary>"):
+            in_changelog = True
+            continue
+        if in_changelog:
+            if line.startswith("## ") or line in ("---", "</details>", "<details open>"):
+                break
+            if line.startswith("|"):
+                last_table_row = i
+    if last_table_row >= 0:
+        lines.insert(last_table_row + 1, f"| {ts(now)} | {event} |")
+        ash_path.write_text("\n".join(lines) + "\n")
+
+
+# ── Relative discovery ────────────────────────────────────────────────────────
+
+def collect_parent_links(target_dir: Path) -> list:
+    """Walk up toward $HOME collecting (name, ash_path) for each dir with ash.md."""
+    home = Path.home()
+    links = []
+    current = target_dir.parent
+    while True:
+        candidate = current / MD_FILE
+        if candidate.exists():
+            links.append((current.name or str(current), candidate))
+        if current == home or current == current.parent:
+            break
+        current = current.parent
+    return links  # closest ancestor first
+
+
+def collect_children_links(target_dir: Path) -> list:
+    """Scan immediate subdirectories for ash.md files."""
+    links = []
+    try:
+        for entry in sorted(target_dir.iterdir()):
+            if entry.is_dir() and entry.name not in NOISE_DIRS:
+                candidate = entry / MD_FILE
+                if candidate.exists():
+                    links.append((entry.name, candidate))
+    except PermissionError:
+        pass
+    return links
+
+
+def collect_sibling_links(target_dir: Path) -> list:
+    """Scan sibling directories (same parent, excluding self) for ash.md files."""
+    links = []
+    parent = target_dir.parent
+    try:
+        for entry in sorted(parent.iterdir()):
+            if entry == target_dir:
+                continue
+            if entry.is_dir() and entry.name not in NOISE_DIRS:
+                candidate = entry / MD_FILE
+                if candidate.exists():
+                    links.append((entry.name, candidate))
+    except PermissionError:
+        pass
+    return links
+
+
+# ── Navigation section ────────────────────────────────────────────────────────
+
+def build_navigation_lines(parents: list, children: list, siblings: list) -> list:
+    """Return the list items for a Navigation section."""
+    lines = [f"- [{CFG['hub_label']}]({GLOBAL_ASH})"]
+    for name, path in parents:
+        lines.append(f"- Up: [{name}]({path})")
+    for name, path in children:
+        lines.append(f"- Down: [{name}]({path})")
+    for name, path in siblings:
+        lines.append(f"- Nearby: [{name}]({path})")
+    return lines
+
+
+def replace_navigation_section(ash_path: Path, nav_lines: list, now: datetime = None) -> None:
+    """Replace the ## Navigation section body in an existing ash.md."""
+    if not ash_path.exists():
+        return
+    lines = ash_path.read_text().splitlines()
+
+    start = None
+    end = None
+    for i, line in enumerate(lines):
+        if line.strip() == "## Navigation":
+            start = i
+            continue
+        if start is not None and end is None:
+            if line.startswith("## ") or line == "---":
+                end = i
+                break
+
+    if start is None:
+        return  # No navigation section — skip silently
+
+    if end is None:
+        end = len(lines)
+
+    new_block = ["## Navigation", ""] + nav_lines + [""]
+    lines[start:end] = new_block
+    ash_path.write_text("\n".join(lines) + "\n")
+    append_changelog_row(ash_path, "Navigation refreshed by `ash update`", now)
+
+
+def replace_directory_section(ash_path: Path) -> bool:
+    """Re-render the ## Directory section with the current file tree. Returns True if changed."""
+    if not ash_path.exists():
+        return False
+    content = ash_path.read_text()
+    if "## Directory" not in content:
+        return False
+    link_tree = build_link_tree(ash_path.parent)
+    new_section = f"## Directory\n\n{link_tree}\n"
+    new_content = re.sub(
+        r'## Directory\n+.*?(?=\n## |\n---|\Z)',
+        new_section,
+        content,
+        flags=re.DOTALL,
+    )
+    if new_content != content:
+        ash_path.write_text(new_content)
+        return True
+    return False
+
+
+# ── Back-propagation ──────────────────────────────────────────────────────────
+
+def _insert_nav_link(ash_path: Path, new_line: str, event: str, now: datetime = None) -> None:
+    """Append a link into the Navigation section of ash_path (idempotent)."""
+    if not ash_path.exists():
+        return
+    content = ash_path.read_text()
+    m = re.search(r'\]\(([^)]+)\)', new_line)
+    if m and m.group(1) in content:
+        return  # Already linked
+
+    lines = content.splitlines()
+    in_nav = False
+    last_nav_link = -1
+    for i, line in enumerate(lines):
+        if line.strip() == "## Navigation":
+            in_nav = True
+            continue
+        if in_nav:
+            if line.startswith("## ") or line == "---":
+                break
+            if line.startswith("- "):
+                last_nav_link = i
+
+    if last_nav_link >= 0:
+        lines.insert(last_nav_link + 1, new_line)
+        ash_path.write_text("\n".join(lines) + "\n")
+        append_changelog_row(ash_path, event, now)
+
+
+def backpropagate_links(new_ash: Path, parents: list, siblings: list, now: datetime = None) -> None:
+    """Update nearby ash.md files to include a link back to the new file."""
+    new_name = new_ash.parent.name
+
+    for _name, parent_ash in parents[:1]:  # Immediate parent only
+        _insert_nav_link(
+            parent_ash,
+            f"- Down: [{new_name}]({new_ash})",
+            event=f"Navigation updated — linked [{new_name}]({new_ash})",
+            now=now,
+        )
+        print(f"  Updated parent: {parent_ash}")
+
+    for _name, sibling_ash in siblings:
+        _insert_nav_link(
+            sibling_ash,
+            f"- Nearby: [{new_name}]({new_ash})",
+            event=f"Navigation updated — linked [{new_name}]({new_ash})",
+            now=now,
+        )
+        print(f"  Updated sibling: {sibling_ash}")
+
+
+# ── Global ash.md ─────────────────────────────────────────────────────────────
+
+GLOBAL_TEMPLATE = """\
+# {hub_label}
+
+> Personal context tracking across all devices and projects.
+> Auto-updated by session-close on terminal exit.
+> Each project's {filename} links back here.
+
+## System Notes
+
+<!-- Add global setup, environment reminders, device context here. -->
+<!-- This section is human-maintained — the Session Log below is auto-updated. -->
+
+## Project Index
+
+| Project | Path | Created | Last Updated |
+|---------|------|---------|--------------|
+
+## Session Log
+
+<!-- Auto-appended below by update-session-docs on session close -->
+"""
+
+
+def ensure_global_ash() -> None:
+    """Create ~/.ash/ash.md if it doesn't exist."""
+    ASH_DIR.mkdir(parents=True, exist_ok=True)
+    if not GLOBAL_ASH.exists():
+        GLOBAL_ASH.write_text(GLOBAL_TEMPLATE.format(
+            hub_label=CFG["hub_label"], filename=MD_FILE))
+        print(f"Created: {GLOBAL_ASH}")
+
+
+def _migrate_global_index_to_table() -> None:
+    """One-time migration: convert list-style Project Index to table format."""
+    if not GLOBAL_ASH.exists():
+        return
+    content = GLOBAL_ASH.read_text()
+    if "| Project |" in content:
+        return  # Already a table
+    marker = "## Project Index\n"
+    if marker not in content:
+        return
+
+    idx = content.index(marker)
+    section_start = idx + len(marker)
+    m = re.search(r'\n## ', content[section_start:])
+    section_end = section_start + m.start() if m else len(content)
+    section = content[section_start:section_end]
+
+    list_entries = re.findall(r'- \[([^\]]+)\]\(([^)]+)\)', section)
+    table_lines = [
+        "",
+        "| Project | Path | Created | Last Updated |",
+        "|---------|------|---------|--------------|",
+    ]
+    for name, path in list_entries:
+        ash_p = Path(path)
+        dir_path = ash_p.parent if ash_p.name == MD_FILE else ash_p
+        table_lines.append(f"| [{name}]({path}) | {dir_path} | — | — |")
+    table_lines.append("")
+
+    content = content[:section_start] + "\n".join(table_lines) + content[section_end:]
+    GLOBAL_ASH.write_text(content)
+
+
+def register_project_in_global(project_ash: Path, now: datetime = None) -> None:
+    """Add a project row to the global Project Index table (idempotent)."""
+    ensure_global_ash()
+    _migrate_global_index_to_table()
+
+    content = GLOBAL_ASH.read_text()
+    if str(project_ash) in content:
+        update_global_entry(project_ash, now)
+        return
+
+    name = project_ash.parent.name
+    dir_path = project_ash.parent
+    link = f"[{name}]({project_ash})"
+    timestamp = ts(now)
+    new_row = f"| {link} | {dir_path} | {timestamp} | {timestamp} |"
+
+    lines = content.splitlines()
+    in_index = False
+    last_data_row = -1
+    separator_row = -1
+    for i, line in enumerate(lines):
+        if line.strip() == "## Project Index":
+            in_index = True
+            continue
+        if in_index:
+            if line.startswith("## "):
+                break
+            if line.startswith("|") and "|---" in line:
+                separator_row = i
+            elif line.startswith("|") and "Project" not in line:
+                last_data_row = i
+
+    insert_after = last_data_row if last_data_row >= 0 else separator_row
+    if insert_after >= 0:
+        lines.insert(insert_after + 1, new_row)
+        GLOBAL_ASH.write_text("\n".join(lines) + "\n")
+        print(f"Registered {name} in global index")
+
+
+def update_global_entry(project_ash: Path, now: datetime = None) -> None:
+    """Update the Last Updated cell for a project in the global index."""
+    if not GLOBAL_ASH.exists():
+        return
+    content = GLOBAL_ASH.read_text()
+    if str(project_ash) not in content:
+        return
+    timestamp = ts(now)
+    lines = content.splitlines()
+    for i, line in enumerate(lines):
+        if str(project_ash) in line and line.startswith("|"):
+            parts = line.split("|")
+            if len(parts) >= 5:
+                parts[-2] = f" {timestamp} "
+                lines[i] = "|".join(parts)
+    GLOBAL_ASH.write_text("\n".join(lines) + "\n")
+
+
+def list_registered_paths() -> list:
+    """Return all ash.md paths registered in the global index."""
+    if not GLOBAL_ASH.exists():
+        return []
+    paths = []
+    in_index = False
+    for line in GLOBAL_ASH.read_text().splitlines():
+        if line.strip() == "## Project Index":
+            in_index = True
+            continue
+        if in_index:
+            if line.startswith("## "):
+                break
+            m = re.search(r'\[([^\]]+)\]\((/[^)]+)\)', line)
+            if m:
+                paths.append(Path(m.group(2)))
+    return paths
+
+
+# ── _OVERVIEW.md sync ────────────────────────────────────────────────────────
+
+def find_overview(dir_path: Path) -> Path | None:
+    """Return the first overview file found in dir_path, checking candidates in order."""
+    for name in OVERVIEW_CANDIDATES:
+        candidate = dir_path / name
+        if candidate.exists():
+            return candidate
+    return None
+
+
+def parse_overview(dir_path: Path) -> dict:
+    """Parse the overview file (devme.md or fallback) from dir_path."""
+    overview = find_overview(dir_path)
+    if overview is None:
+        return {}
+    content = overview.read_text()
+    result = {"_path": overview}
+
+    # YAML frontmatter between --- delimiters
+    fm_match = re.match(r'^---\n(.*?)\n---', content, re.DOTALL)
+    if fm_match:
+        fm = fm_match.group(1)
+        for field, key in [
+            ("Status", "status"),
+            ("Next_action", "next_action"),
+        ]:
+            m = re.search(rf'^{field}:\s*(.+)$', fm, re.MULTILINE)
+            if m:
+                result[key] = m.group(1).strip()
+
+    # ## Next Steps section from body
+    m = re.search(r'## Next Steps\n(.*?)(?=\n## |\Z)', content, re.DOTALL)
+    if m:
+        result["next_steps"] = m.group(1).strip()
+
+    return result
+
+
+def _extract_ash_section(ash_path: Path, section: str) -> str:
+    """Return the body text of a ## section in ash.md."""
+    in_section = False
+    body = []
+    for line in ash_path.read_text().splitlines():
+        if line.strip() == f"## {section}":
+            in_section = True
+            continue
+        if in_section:
+            if line.startswith("## ") or line == "---":
+                break
+            body.append(line)
+    return "\n".join(body).strip()
+
+
+def replace_ash_section(ash_path: Path, section: str, new_body: str) -> None:
+    """Replace the body of a ## section in ash.md, preserving the heading."""
+    lines = ash_path.read_text().splitlines()
+    start = None
+    end = None
+    for i, line in enumerate(lines):
+        if line.strip() == f"## {section}":
+            start = i
+            continue
+        if start is not None and end is None:
+            if line.startswith("## ") or line == "---":
+                end = i
+                break
+    if start is None:
+        return
+    if end is None:
+        end = len(lines)
+    new_block = [f"## {section}", ""] + new_body.splitlines() + [""]
+    lines[start:end] = new_block
+    ash_path.write_text("\n".join(lines) + "\n")
+
+
+def pull_from_overview(ash_path: Path, now: datetime = None) -> bool:
+    """Pull Status and Next Steps from _OVERVIEW.md into ash.md. Returns True if updated."""
+    data = parse_overview(ash_path.parent)
+    if not data:
+        return False
+
+    updated = False
+
+    if any(k in data for k in ("status", "next_action")):
+        lines = []
+        if "status" in data:
+            lines.append(f"**Status:** {data['status']}")
+        if "next_action" in data:
+            lines.append(f"**Next action:** {data['next_action']}")
+        replace_ash_section(ash_path, "Status", "\n".join(lines))
+        updated = True
+
+    if "next_steps" in data:
+        replace_ash_section(ash_path, "Next Steps", data["next_steps"])
+        updated = True
+
+    if updated:
+        append_changelog_row(ash_path, "Synced from `_OVERVIEW.md`", now)
+        print(f"  Synced from: {data['_path']}")
+
+    return updated
+
+
+def push_to_overview(ash_path: Path, now: datetime = None) -> bool:
+    """Push Status and Next Steps from ash.md back to the overview file. Returns True if updated."""
+    overview = find_overview(ash_path.parent)
+    if overview is None:
+        return False
+
+    status_body = _extract_ash_section(ash_path, "Status")
+    next_steps_body = _extract_ash_section(ash_path, "Next Steps")
+
+    # Extract bare status value from "**Status:** Active" or first plain line
+    status_value = None
+    m = re.search(r'\*\*Status:\*\*\s*(.+)', status_body)
+    if m:
+        status_value = m.group(1).strip()
+    else:
+        for line in status_body.splitlines():
+            line = line.strip()
+            if line and not line.startswith("<!--"):
+                status_value = line
+                break
+
+    ov_content = overview.read_text()
+    original = ov_content
+
+    if status_value:
+        ov_content = re.sub(
+            r'^(Status:\s*).*$', rf'\g<1>{status_value}',
+            ov_content, flags=re.MULTILINE,
+        )
+
+    if next_steps_body:
+        if "## Next Steps" in ov_content:
+            ov_content = re.sub(
+                r'(## Next Steps\n).*?(?=\n## |\Z)',
+                rf'\g<1>{next_steps_body}\n',
+                ov_content, flags=re.DOTALL,
+            )
+        else:
+            ov_content = ov_content.rstrip() + f"\n\n## Next Steps\n{next_steps_body}\n"
+
+    if ov_content != original:
+        overview.write_text(ov_content)
+        append_changelog_row(ash_path, "Pushed to `_OVERVIEW.md`", now)
+        return True
+
+    return False
+
+
+# ── README detection ──────────────────────────────────────────────────────────
+
+def find_readme(target_dir: Path) -> Path:
+    """Return the first README-like file found, or a default README.md path."""
+    for name in ("README.md", "readme.md", "README", "README.txt", "README.rst"):
+        candidate = target_dir / name
+        if candidate.exists():
+            return candidate
+    return target_dir / "README.md"  # non-existent placeholder — clicking creates it in Zed
+
+
+# ── Link tree (clickable directory listing) ───────────────────────────────────
+
+def build_link_tree(target_dir: Path, max_depth: int = 3) -> str:
+    """Generate a nested markdown list with relative clickable file links."""
+    lines = [f"**{target_dir.name}/**"]
+
+    def _recurse(directory: Path, indent: str, depth: int):
+        if depth > max_depth:
+            return
+        try:
+            entries = sorted(
+                [e for e in directory.iterdir() if e.name not in NOISE_DIRS],
+                key=lambda e: (e.is_dir(), e.name.lower()),
+            )
+        except OSError:
+            return
+        for entry in entries:
+            rel = entry.relative_to(target_dir)
+            if entry.is_dir():
+                lines.append(f"{indent}- **{entry.name}/**")
+                _recurse(entry, indent + "  ", depth + 1)
+            else:
+                lines.append(f"{indent}- [{entry.name}](./{rel})")
+
+    _recurse(target_dir, "", 1)
+    return "\n".join(lines) if len(lines) > 1 else f"**{target_dir.name}/**\n_empty directory_"
+
+
+# ── AI notes detection ────────────────────────────────────────────────────────
+
+def _first_heading(md_file: Path) -> str:
+    try:
+        for line in md_file.read_text(errors="replace").splitlines():
+            line = line.strip()
+            if line.startswith("#"):
+                text = line.lstrip("#").strip()
+                return text[:60] if text else "(untitled)"
+    except OSError:
+        pass
+    return "(untitled)"
+
+
+def detect_ai_notes(target_dir: Path, ash_path: Path) -> list:
+    found = []
+    ai_content_res = [re.compile(p) for p in AI_CONTENT_PATTERNS]
+    for dirpath_str, dirnames, filenames in os.walk(str(target_dir), topdown=True):
+        dirpath = Path(dirpath_str)
+        dirnames[:] = [d for d in dirnames if d not in NOISE_DIRS]
+        try:
+            rel_dir = dirpath.relative_to(target_dir)
+        except ValueError:
+            continue
+        if len(rel_dir.parts) >= 3:
+            dirnames.clear()
+            continue
+        for filename in sorted(filenames):
+            if not filename.endswith(".md"):
+                continue
+            md_file = dirpath / filename
+            if md_file == ash_path:
+                continue
+            rel = md_file.relative_to(target_dir)
+            is_ai = bool(AI_FILENAME_RE.match(filename))
+            if not is_ai:
+                try:
+                    content = md_file.read_text(errors="replace")[:4096]
+                    is_ai = any(r.search(content) for r in ai_content_res)
+                except OSError:
+                    continue
+            if is_ai:
+                found.append({"rel": rel, "path": md_file, "excerpt": _first_heading(md_file)})
+    return found
+
+
+# ── Template assembly ─────────────────────────────────────────────────────────
+
+def build_template(
+    target_dir: Path,
+    parents: list,
+    children: list,
+    siblings: list,
+    ai_notes: list,
+    now: datetime,
+    overview: dict = None,
+) -> str:
+    project_name = target_dir.name
+    nav_block = "\n".join(build_navigation_lines(parents, children, siblings))
+    readme = find_readme(target_dir)
+    readme_rel = readme.relative_to(target_dir)
+    link_tree = build_link_tree(target_dir)
+
+    if ai_notes:
+        ai_lines = ["<!-- AI-generated content detected in this directory -->"]
+        for note in ai_notes:
+            ai_lines.append(f"- [{note['rel']}]({note['rel']}) — {note['excerpt']}")
+        ai_section = "\n".join(ai_lines)
+    else:
+        ai_section = "<!-- No AI notes found -->"
+
+    if overview:
+        status_lines = []
+        if "status" in overview:
+            status_lines.append(f"**Status:** {overview['status']}")
+        if "next_action" in overview:
+            status_lines.append(f"**Next action:** {overview['next_action']}")
+        status_body = "\n".join(status_lines) if status_lines else "<!-- What's the current state of this project? -->"
+        next_steps_body = overview.get("next_steps", "<!-- What needs to happen next? -->")
+        sync_note = f"\n| {ts(now)} | Synced from `_OVERVIEW.md` |"
+    else:
+        status_body = "<!-- What's the current state of this project? -->"
+        next_steps_body = "<!-- What needs to happen next? -->"
+        sync_note = ""
+
+    return f"""# {project_name}
+
+## Navigation
+
+{nav_block}
+
+> [README](./{readme_rel})
+
+---
+
+## Status
+
+{status_body}
+
+## Next Steps
+
+{next_steps_body}
+
+---
+
+## Change Log
+
+| Date | Event |
+|------|-------|
+| {ts(now)} | Created by `ash init` |{sync_note}
+
+---
+
+## Directory
+
+{link_tree}
+
+---
+
+## AI Notes
+
+{ai_section}
+
+---
+
+## Session Log
+
+<!-- Auto-appended below by update-session-docs on session close -->
+"""
+
+
+# ── Subcommand: init ──────────────────────────────────────────────────────────
+
+def cmd_init(args):
+    target = Path(args.path).expanduser().resolve()
+    if not target.exists():
+        print(f"Error: path does not exist: {target}", file=sys.stderr)
+        sys.exit(1)
+    if not target.is_dir():
+        print(f"Error: not a directory: {target}", file=sys.stderr)
+        sys.exit(1)
+    if target == Path.home():
+        print("Warning: initializing ash.md in your home directory.")
+
+    ash_path = target / MD_FILE
+    overwrite = ash_path.exists()
+    if overwrite and not args.force:
+        print(f"{MD_FILE} already exists at {ash_path}")
+        print("Use --force to overwrite.")
+        sys.exit(1)
+
+    now = datetime.now()
+    parents = collect_parent_links(target)
+    children = collect_children_links(target)
+    siblings = collect_sibling_links(target)
+    ai_notes = detect_ai_notes(target, ash_path)
+    overview = parse_overview(target)
+
+    content = build_template(target, parents, children, siblings, ai_notes, now, overview)
+    ash_path.write_text(content)
+    verb = "Overwrote" if overwrite else "Created"
+    print(f"{verb}: {ash_path}")
+
+    if overview:
+        print(f"  Synced from: {overview['_path']}")
+    if ai_notes:
+        print(f"  AI notes detected: {len(ai_notes)} file(s)")
+    if parents:
+        print(f"  Parents: {', '.join(n for n, _ in parents)}")
+    if children:
+        print(f"  Children: {', '.join(n for n, _ in children)}")
+    if siblings:
+        print(f"  Siblings: {', '.join(n for n, _ in siblings)}")
+
+    ensure_global_ash()
+    register_project_in_global(ash_path, now)
+    backpropagate_links(ash_path, parents, siblings, now)
+
+
+# ── Subcommand: update ────────────────────────────────────────────────────────
+
+def cmd_update(args):
+    target = Path(args.path).expanduser().resolve()
+    ash_path = target / MD_FILE if target.is_dir() else target
+    if not ash_path.exists():
+        print(f"Error: no ash.md found at {ash_path}", file=sys.stderr)
+        sys.exit(1)
+
+    now = datetime.now()
+    project_dir = ash_path.parent
+    parents = collect_parent_links(project_dir)
+    children = collect_children_links(project_dir)
+    siblings = collect_sibling_links(project_dir)
+
+    replace_navigation_section(ash_path, build_navigation_lines(parents, children, siblings), now)
+    pull_from_overview(ash_path, now)
+    update_global_entry(ash_path, now)
+    print(f"Updated: {ash_path}")
+    if parents:
+        print(f"  Parents: {', '.join(n for n, _ in parents)}")
+    if children:
+        print(f"  Children: {', '.join(n for n, _ in children)}")
+    if siblings:
+        print(f"  Siblings: {', '.join(n for n, _ in siblings)}")
+
+
+# ── Subcommand: push ─────────────────────────────────────────────────────────
+
+def cmd_push(args):
+    target = Path(args.path).expanduser().resolve()
+    ash_path = target / MD_FILE if target.is_dir() else target
+    if not ash_path.exists():
+        print(f"Error: no ash.md found at {ash_path}", file=sys.stderr)
+        sys.exit(1)
+    overview = find_overview(ash_path.parent)
+    if overview is None:
+        print(f"Error: no overview file (devme.md / _OVERVIEW.md) found in {ash_path.parent}", file=sys.stderr)
+        sys.exit(1)
+    now = datetime.now()
+    if push_to_overview(ash_path, now):
+        print(f"Pushed to: {overview}")
+    else:
+        print("No changes to push.")
+
+
+# ── Subcommand: refresh ───────────────────────────────────────────────────────
+
+def cmd_refresh(_args):
+    paths = list_registered_paths()
+    if not paths:
+        print("No registered ash.md files found in global index.")
+        return
+    print(f"Refreshing {len(paths)} registered file(s)...")
+    now = datetime.now()
+    for p in paths:
+        if not p.exists():
+            print(f"  Skipped (not found): {p}")
+            continue
+        project_dir = p.parent
+        _upgrade_file(p)
+        replace_directory_section(p)
+        parents = collect_parent_links(project_dir)
+        children = collect_children_links(project_dir)
+        siblings = collect_sibling_links(project_dir)
+        replace_navigation_section(p, build_navigation_lines(parents, children, siblings), now)
+        update_global_entry(p, now)
+        print(f"  Refreshed: {p}")
+
+
+# ── Subcommand: upgrade ───────────────────────────────────────────────────────
+
+def cmd_upgrade(args):
+    """Patch structural elements of existing ash.md files without touching content."""
+    target = Path(args.path).expanduser().resolve()
+
+    if args.all:
+        paths = list_registered_paths()
+        if not paths:
+            print("No registered ash.md files found.")
+            return
+    else:
+        ash_path = target / MD_FILE if target.is_dir() else target
+        if not ash_path.exists():
+            print(f"Error: no ash.md found at {ash_path}", file=sys.stderr)
+            sys.exit(1)
+        paths = [ash_path]
+
+    for ash_path in paths:
+        if not ash_path.exists():
+            print(f"  Skipped (not found): {ash_path}")
+            continue
+        if _upgrade_file(ash_path):
+            print(f"Upgraded: {ash_path}")
+        else:
+            print(f"Already current: {ash_path}")
+
+
+def _upgrade_file(ash_path: Path) -> None:
+    """Apply structural upgrades to a single ash.md in-place."""
+    now = datetime.now()
+    content = ash_path.read_text()
+    changed = False
+
+    # 1. Unwrap any <details> sections back to plain ## headings
+    #    (Zed doesn't support interactive <details> in its markdown renderer)
+    details_patterns = [
+        # <details open><summary>Change Log</summary>..content..</details>  →  ## Change Log\n..content..
+        (
+            re.compile(r'<details open>\n<summary>Change Log</summary>\n(.*?)</details>', re.DOTALL),
+            lambda m: f"## Change Log\n{m.group(1).rstrip()}\n",
+        ),
+        (
+            re.compile(r'<details open>\n<summary>Directory</summary>\n(.*?)</details>', re.DOTALL),
+            lambda m: f"## Directory\n{m.group(1).rstrip()}\n",
+        ),
+        (
+            re.compile(r'<details>\n<summary>Session Log</summary>\n(.*?)</details>', re.DOTALL),
+            lambda m: f"## Session Log\n{m.group(1).rstrip()}\n",
+        ),
+    ]
+    for pattern, replacer in details_patterns:
+        new_content = pattern.sub(replacer, content)
+        if new_content != content:
+            content = new_content
+            changed = True
+
+    # 2. Replace old ASCII Directory Tree (fenced code block) with clickable link tree
+    old_tree_pattern = re.compile(
+        r'## Directory Tree\s*\n+```[^\n]*\n.*?```',
+        re.DOTALL,
+    )
+    if old_tree_pattern.search(content):
+        link_tree = build_link_tree(ash_path.parent)
+        content = old_tree_pattern.sub(f"## Directory\n\n{link_tree}\n", content)
+        changed = True
+
+    # 3. Add root folder name to Directory section if missing
+    #    (the link tree used to start with the first child, not the folder itself)
+    dir_section = re.search(r'## Directory\n+([^\n].*?)(?=\n## |\n---|\Z)', content, re.DOTALL)
+    if dir_section:
+        folder_label = f"**{ash_path.parent.name}/**"
+        if folder_label not in content:
+            # Regenerate the link tree (includes root label now)
+            link_tree = build_link_tree(ash_path.parent)
+            content = re.sub(
+                r'(## Directory\n+).*?(?=\n## |\n---|\Z)',
+                lambda m: f"{m.group(1)}{link_tree}\n",
+                content,
+                flags=re.DOTALL,
+            )
+            changed = True
+
+    if changed:
+        ash_path.write_text(content)
+        append_changelog_row(ash_path, "Structural upgrade applied", now)
+    return changed
+
+
+# ── Subcommand: rename-overview ──────────────────────────────────────────────
+
+def cmd_rename_overview(args):
+    """Rename overview files (e.g. _OVERVIEW.md → devme.md) across registered projects."""
+    new_name = args.new_name
+    if args.path:
+        search_roots = [Path(args.path).expanduser().resolve()]
+    else:
+        # Use all registered project directories from global index
+        search_roots = [p.parent for p in list_registered_paths() if p.exists()]
+        if not search_roots:
+            print("No registered projects found. Pass a path explicitly.")
+            sys.exit(1)
+
+    targets = [n for n in OVERVIEW_CANDIDATES if n != new_name]
+    renamed = []
+    skipped = []
+
+    for root in search_roots:
+        for old_name in targets:
+            old_path = root / old_name
+            if old_path.exists():
+                new_path = root / new_name
+                if new_path.exists():
+                    skipped.append((old_path, f"target {new_path} already exists"))
+                    break
+                old_path.rename(new_path)
+                renamed.append((old_path, new_path))
+                break
+
+    if renamed:
+        print(f"Renamed {len(renamed)} file(s):")
+        for old, new in renamed:
+            print(f"  {old.name} → {new.name}  ({old.parent})")
+    if skipped:
+        print(f"Skipped {len(skipped)} file(s):")
+        for path, reason in skipped:
+            print(f"  {path}  ({reason})")
+    if not renamed and not skipped:
+        print("No overview files found to rename.")
+
+    if renamed and new_name not in OVERVIEW_CANDIDATES:
+        print(f"\nNote: add '{new_name}' to OVERVIEW_CANDIDATES in ~/.local/bin/ash to find it.")
+
+
+# ── Subcommand: watch ────────────────────────────────────────────────────────
+
+def cmd_watch(args):
+    """Poll ash.md and auto-push to _OVERVIEW.md whenever it's modified."""
+    import time
+
+    target = Path(args.path).expanduser().resolve()
+    ash_path = target / MD_FILE if target.is_dir() else target
+    overview = ash_path.parent / "_OVERVIEW.md"
+
+    if not ash_path.exists():
+        print(f"Error: no ash.md found at {ash_path}", file=sys.stderr)
+        sys.exit(1)
+    overview = find_overview(ash_path.parent)
+    if overview is None:
+        print(f"Error: no overview file (devme.md / _OVERVIEW.md) found in {ash_path.parent}", file=sys.stderr)
+        sys.exit(1)
+
+    interval = args.interval
+    last_mtime = ash_path.stat().st_mtime
+    print(f"Watching: {ash_path}")
+    print(f"  Will push to: {overview}")
+    print(f"  Poll interval: {interval}s  (Ctrl+C to stop)")
+
+    try:
+        while True:
+            time.sleep(interval)
+            try:
+                mtime = ash_path.stat().st_mtime
+            except FileNotFoundError:
+                continue
+            if mtime != last_mtime:
+                last_mtime = mtime
+                now = datetime.now()
+                if push_to_overview(ash_path, now):
+                    print(f"  [{ts(now)}] Pushed changes to _OVERVIEW.md")
+                else:
+                    print(f"  [{ts(now)}] No relevant changes to push")
+    except KeyboardInterrupt:
+        print("\nStopped watching.")
+
+
+# ── Subcommand: serve ────────────────────────────────────────────────────────
+
+_SERVE_HTML_PATH = ASH_DIR / "serve.html"
+
+def _load_serve_html() -> str:
+    """Load serve.html from ~/.ash/, substituting current config values."""
+    if not _SERVE_HTML_PATH.exists():
+        print(f"Error: {_SERVE_HTML_PATH} not found. Re-run ash to restore it.", file=sys.stderr)
+        sys.exit(1)
+    cfg = _load_config()  # re-read on every request so edits reflect without restart
+    hub_dir = Path(cfg["hub_dir"]).expanduser()
+    hub_path = hub_dir / cfg["filename"]
+    html = _SERVE_HTML_PATH.read_text()
+    html = html.replace("__HUB_LABEL__",    cfg["hub_label"])
+    html = html.replace("__USERNAME__",     cfg["username"])
+    html = html.replace("__EDITOR__",       cfg["editor"])
+    html = html.replace("__EDITOR_LABEL__", cfg["editor"].capitalize())
+    html = html.replace("__ACCENT_COLOR__", cfg["accent_color"])
+    html = html.replace("__HUB_PATH__",     str(hub_path))
+    html = html.replace("__MD_FILE__",      cfg["filename"])
+    _svg_folder      = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='32' height='32' viewBox='0 0 32 32'%3E%3Cpath fill='none' stroke='currentColor' stroke-linecap='round' stroke-width='2' d='M28 11v13a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6c3 0 3 3 5 3h9.003C27.108 9 28 9.895 28 11Z'/%3E%3C/svg%3E"
+    _svg_folder_open = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='32' height='32' viewBox='0 0 32 32'%3E%3Cpath fill='none' stroke='currentColor' stroke-linecap='round' stroke-width='2' d='M4 26V8a2 2 0 0 1 2-2h6c3 0 3 3 5 3h7a2 2 0 0 1 2 2v2M4 26l3.783-12.294A1 1 0 0 1 8.739 13H26M4 26h19.523a2 2 0 0 0 1.911-1.412l3.168-10.294A1 1 0 0 0 27.646 13H26'/%3E%3C/svg%3E"
+    html = html.replace("__ICON_FOLDER__",      cfg.get("icon_folder",      _svg_folder))
+    html = html.replace("__ICON_FOLDER_OPEN__", cfg.get("icon_folder_open", _svg_folder_open))
+    html = html.replace("__ANN_ICON_COLOR__",   cfg.get("ann_icon_color",   cfg["accent_color"]))
+    return html
+
+
+
+_SERVE_SSE_QUEUES: list = []
+_SERVE_SSE_LOCK = __import__('threading').Lock()
+
+
+def _serve_watcher():
+    import time
+    mtimes: dict = {}
+    while True:
+        time.sleep(1.5)
+        paths = list_registered_paths()
+        if GLOBAL_ASH.exists():
+            paths = [GLOBAL_ASH] + [p for p in paths if p != GLOBAL_ASH]
+        for p in paths:
+            try:
+                mtime = p.stat().st_mtime
+                if p in mtimes and mtimes[p] != mtime:
+                    with _SERVE_SSE_LOCK:
+                        for q in _SERVE_SSE_QUEUES:
+                            try:
+                                q.put_nowait(str(p))
+                            except Exception:
+                                pass
+                mtimes[p] = mtime
+            except OSError:
+                pass
+
+
+def _make_handler():
+    import http.server
+    import json
+    import queue
+    import urllib.parse
+
+    class AshHandler(http.server.BaseHTTPRequestHandler):
+        def log_message(self, *_):
+            pass
+
+        def do_GET(self):
+            parsed = urllib.parse.urlparse(self.path)
+            params = urllib.parse.parse_qs(parsed.query)
+            p = parsed.path
+
+            if p == '/':
+                self._redirect(f'/view?path={GLOBAL_ASH}')
+            elif p == '/view':
+                path = params.get('path', [str(GLOBAL_ASH)])[0]
+                html = _load_serve_html().replace('__CURRENT_PATH__', path)
+                self._send(200, 'text/html; charset=utf-8', html.encode())
+            elif p == '/raw':
+                path = params.get('path', [None])[0]
+                if not path:
+                    self.send_error(400)
+                    return
+                try:
+                    self._send(200, 'text/plain; charset=utf-8', Path(path).read_bytes())
+                except (FileNotFoundError, PermissionError):
+                    self.send_error(404)
+            elif p == '/events':
+                self._sse()
+            elif p == '/api/mesh':
+                paths = list_registered_paths()
+                non_hub = sorted(
+                    [x for x in paths if x != GLOBAL_ASH and x.exists()],
+                    key=lambda x: str(x).lower()
+                )
+                hub_list = [GLOBAL_ASH] if GLOBAL_ASH.exists() else []
+                mesh = [
+                    {'name': x.parent.name if x.name == MD_FILE else x.stem,
+                     'path': str(x), 'dir': str(x.parent)}
+                    for x in hub_list + non_hub
+                ]
+                self._send(200, 'application/json', json.dumps(mesh).encode())
+            elif p == '/api/notes':
+                self._send(200, 'application/json', json.dumps(_load_notes()).encode())
+            elif p == '/open':
+                path = params.get('path', [None])[0]
+                if path:
+                    subprocess.Popen(
+                        [CFG["editor"], path],
+                        stdout=subprocess.DEVNULL,
+                        stderr=subprocess.DEVNULL,
+                        start_new_session=True,
+                    )
+                self._send(200, 'text/plain', b'ok')
+            else:
+                self.send_error(404)
+
+        def do_POST(self):
+            parsed = urllib.parse.urlparse(self.path)
+            params = urllib.parse.parse_qs(parsed.query)
+            p = parsed.path
+            if p == '/api/notes':
+                path = params.get('path', [None])[0]
+                if not path:
+                    self.send_error(400)
+                    return
+                length = int(self.headers.get('Content-Length', 0))
+                body = self.rfile.read(length).decode('utf-8').strip()
+                _save_note(path, body)
+                self._send(200, 'application/json', b'{"ok":true}')
+            else:
+                self.send_error(404)
+
+        def _redirect(self, loc):
+            self.send_response(302)
+            self.send_header('Location', loc)
+            self.end_headers()
+
+        def _send(self, code, ct, body: bytes):
+            self.send_response(code)
+            self.send_header('Content-Type', ct)
+            self.send_header('Content-Length', len(body))
+            self.end_headers()
+            self.wfile.write(body)
+
+        def _sse(self):
+            self.send_response(200)
+            self.send_header('Content-Type', 'text/event-stream')
+            self.send_header('Cache-Control', 'no-cache')
+            self.send_header('Access-Control-Allow-Origin', '*')
+            self.end_headers()
+            q: queue.Queue = queue.Queue(maxsize=20)
+            with _SERVE_SSE_LOCK:
+                _SERVE_SSE_QUEUES.append(q)
+            try:
+                while True:
+                    try:
+                        data = q.get(timeout=10)
+                        self.wfile.write(f'data: {data}\n\n'.encode())
+                    except queue.Empty:
+                        self.wfile.write(b': heartbeat\n\n')
+                    self.wfile.flush()
+            except (BrokenPipeError, ConnectionResetError, OSError):
+                pass
+            finally:
+                with _SERVE_SSE_LOCK:
+                    if q in _SERVE_SSE_QUEUES:
+                        _SERVE_SSE_QUEUES.remove(q)
+
+    return AshHandler
+
+
+def cmd_serve(args):
+    import http.server
+    import socket
+    import threading
+    import webbrowser
+
+    port = args.port
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+        while s.connect_ex(('localhost', port)) == 0:
+            port += 1
+
+    threading.Thread(target=_serve_watcher, daemon=True).start()
+    server = http.server.ThreadingHTTPServer(('localhost', port), _make_handler())
+    url = f'http://localhost:{port}'
+    print(f'ash serve  →  {url}')
+    print('Watching all registered ash.md files. Ctrl+C to stop.')
+    if not args.no_browser:
+        threading.Timer(0.4, lambda: webbrowser.open(url)).start()
+    try:
+        server.serve_forever()
+    except KeyboardInterrupt:
+        print('\nStopped.')
+
+
+# ── Entry point ───────────────────────────────────────────────────────────────
+
+def main():
+    p = argparse.ArgumentParser(
+        prog="ash",
+        description="Personal context CLI for the ash.md system.",
+    )
+    sub = p.add_subparsers(dest="command", required=True)
+
+    init_p = sub.add_parser("init", help="Initialize ash.md in a directory")
+    init_p.add_argument("path", nargs="?", default=".", help="Target directory (default: .)")
+    init_p.add_argument("--force", action="store_true", help="Overwrite existing ash.md")
+
+    update_p = sub.add_parser("update", help="Refresh navigation + pull from _OVERVIEW.md")
+    update_p.add_argument("path", nargs="?", default=".", help="Target directory (default: .)")
+
+    push_p = sub.add_parser("push", help="Push Status/Next Steps from ash.md to _OVERVIEW.md")
+    push_p.add_argument("path", nargs="?", default=".", help="Target directory (default: .)")
+
+    upgrade_p = sub.add_parser("upgrade", help="Patch structure of existing ash.md files (tree, collapsible sections)")
+    upgrade_p.add_argument("path", nargs="?", default=".", help="Target directory (default: .)")
+    upgrade_p.add_argument("--all", action="store_true", help="Upgrade all registered ash.md files")
+
+    rename_p = sub.add_parser("rename-overview", help="Rename overview files (e.g. _OVERVIEW.md → devme.md)")
+    rename_p.add_argument("new_name", help="Target filename (e.g. devme.md)")
+    rename_p.add_argument("path", nargs="?", default=None, help="Directory to search (default: all registered projects)")
+
+    watch_p = sub.add_parser("watch", help="Auto-push to overview file whenever ash.md is saved")
+    watch_p.add_argument("path", nargs="?", default=".", help="Target directory (default: .)")
+    watch_p.add_argument("--interval", type=float, default=2.0, help="Poll interval in seconds (default: 2)")
+
+    sub.add_parser("refresh", help="Refresh navigation in all registered ash.md files")
+
+    serve_p = sub.add_parser("serve", help="Start local web server for the ash.md mesh")
+    serve_p.add_argument("--port", type=int, default=7272, help="Port to serve on (default: 7272)")
+    serve_p.add_argument("--no-browser", action="store_true", help="Don't open browser automatically")
+
+    args = p.parse_args()
+    if args.command == "init":
+        cmd_init(args)
+    elif args.command == "update":
+        cmd_update(args)
+    elif args.command == "push":
+        cmd_push(args)
+    elif args.command == "upgrade":
+        cmd_upgrade(args)
+    elif args.command == "rename-overview":
+        cmd_rename_overview(args)
+    elif args.command == "watch":
+        cmd_watch(args)
+    elif args.command == "refresh":
+        cmd_refresh(args)
+    elif args.command == "serve":
+        cmd_serve(args)
+
+
+if __name__ == "__main__":
+    main()
