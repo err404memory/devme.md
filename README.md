@@ -100,13 +100,13 @@ devme rm [path] --delete       # remove from index and also delete the companion
 
 > **Optional.** This section only applies if you use the `whatdoing` project manager. Skip it if you don't.
 
-devme integrates with [`whatdoing`](https://github.com/err404memory/whatdoing) project overview files. These are the detailed per-project documents maintained by whatdoing — tech stack, commands, status, roadmap, blockers — the full project record. The companion file is intentionally lighter: navigation, annotations, session log, and a live window into the overview's current status.
+devme integrates with [`whatdoing`](https://github.com/err404memory/whatdoing) project overview files. Canonical filename is `overview.md`; legacy names are still read for compatibility: `project.md`, `_OVERVIEW.md`, `PROJECT.md`, and `devme.md`. These are the detailed per-project documents maintained by whatdoing — tech stack, commands, status, roadmap, blockers — the full project record. The companion file is intentionally lighter: navigation, annotations, session log, and a live window into the overview's current status.
 
-When a `devme.md`, `PROJECT.md`, `overview.md`, or `_OVERVIEW.md` exists in a directory, `devme init` pulls its **Status** and **Next Steps** fields into the companion file automatically. From that point you can keep them in sync:
+When one of those overview files exists in a directory, `devme init` pulls its **Status** and **Next Steps** fields into the companion file automatically. From that point you can keep them in sync:
 
 ```sh
-devme update [path]   # pull latest from devme.md / _OVERVIEW.md into companion file
-devme push [path]     # write Status/Next Steps changes back to devme.md / _OVERVIEW.md
+devme update [path]   # pull latest from overview file into companion file
+devme push [path]     # write Status/Next Steps changes back to overview file
 devme watch [path]    # continuous two-way sync on file save
 ```
 

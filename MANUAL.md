@@ -227,13 +227,13 @@ project-name/
 
 ## whatdoing Integration
 
-If you use [`whatdoing`](https://github.com/err404memory/whatdoing) for project management, devme can sync with its overview files (`project.md` or `_OVERVIEW.md`).
+If you use [`whatdoing`](https://github.com/err404memory/whatdoing) for project management, devme can sync with its overview files. Canonical filename is `overview.md`; legacy names are still read: `project.md`, `_OVERVIEW.md`, `PROJECT.md`, and `devme.md`.
 
 When a project overview exists in a directory, `devme init` automatically pulls **Status** and **Next Steps** into the companion file. After that:
 
 ```sh
-devme update [path]   # pull latest status from project.md into companion file
-devme push [path]     # write your edits back to project.md
+devme update [path]   # pull latest status from overview file into companion file
+devme push [path]     # write your edits back to overview file
 devme watch [path]    # two-way sync on file save
 ```
 

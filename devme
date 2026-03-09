@@ -62,8 +62,8 @@ GLOBAL_ASH = ASH_DIR / MD_FILE
 
 NOISE_DIRS = {".git", "node_modules", "__pycache__", "venv", ".venv", "dist", "build", "out", "flutter", "go"}
 
-# Overview file — preferred name first, fallbacks for migration
-OVERVIEW_CANDIDATES = ["devme.md", "overview.md", "_OVERVIEW.md", "PROJECT.md"]
+# Overview file — canonical name first, legacy fallbacks after
+OVERVIEW_CANDIDATES = ["overview.md", "project.md", "_OVERVIEW.md", "PROJECT.md", "devme.md"]
 
 AI_FILENAME_RE = re.compile(
     r"^(CLAUDE\.md|.*-session-.*\.md|.*-summary.*\.md|.*claude.*\.md|.*\.ai\.md)$",
@@ -543,7 +543,7 @@ def list_registered_paths() -> list:
     return paths
 
 
-# ── _OVERVIEW.md sync ────────────────────────────────────────────────────────
+# ── Overview sync ────────────────────────────────────────────────────────────
 
 def find_overview(dir_path: Path) -> Path | None:
     """Return the first overview file found in dir_path, checking candidates in order."""
@@ -555,7 +555,7 @@ def find_overview(dir_path: Path) -> Path | None:
 
 
 def parse_overview(dir_path: Path) -> dict:
-    """Parse the overview file (devme.md or fallback) from dir_path."""
+    """Parse the overview file from dir_path."""
     overview = find_overview(dir_path)
     if overview is None:
         return {}
@@ -620,7 +620,7 @@ def replace_ash_section(ash_path: Path, section: str, new_body: str) -> None:
 
 
 def pull_from_overview(ash_path: Path, now: datetime = None) -> bool:
-    """Pull Status and Next Steps from _OVERVIEW.md into a companion file. Returns True if updated."""
+    """Pull Status and Next Steps from the overview file into a companion file. Returns True if updated."""
     data = parse_overview(ash_path.parent)
     if not data:
         return False
@@ -641,7 +641,7 @@ def pull_from_overview(ash_path: Path, now: datetime = None) -> bool:
         updated = True
 
     if updated:
-        append_changelog_row(ash_path, "Synced from `_OVERVIEW.md`", now)
+        append_changelog_row(ash_path, "Synced from overview file", now)
         print(f"  Synced from: {data['_path']}")
 
     return updated
@@ -687,9 +687,48 @@ def push_to_overview(ash_path: Path, now: datetime = None) -> bool:
         else:
             ov_content = ov_content.rstrip() + f"\n\n## Next Steps\n{next_steps_body}\n"
 
+    # Next_action in frontmatter: explicit Status field first, fallback to first Next Steps item
+    next_action_value = None
+    m = re.search(r'^\s*\*\*Next action:\*\*\s*(.+?)\s*$', status_body, re.MULTILINE | re.IGNORECASE)
+    if m:
+        candidate = m.group(1).strip()
+        if candidate and not candidate.startswith("<!--"):
+            next_action_value = candidate
+
+    if not next_action_value:
+        for line in next_steps_body.splitlines():
+            line = line.strip()
+            if not line or line.startswith("<!--"):
+                continue
+            line = re.sub(r'^[-*]\s*\[[ xX]\]\s*', '', line)
+            line = re.sub(r'^[-*]\s+', '', line)
+            line = re.sub(r'^\d+\.\s+', '', line)
+            line = line.strip()
+            if line:
+                next_action_value = line
+                break
+
+    if next_action_value:
+        fm_match = re.match(r'^(---\n)(.*?)(\n---\n?)', ov_content, re.DOTALL)
+        if fm_match:
+            fm_body = fm_match.group(2)
+            if re.search(r'^Next_action:\s*.*$', fm_body, re.MULTILINE):
+                fm_body = re.sub(
+                    r'^Next_action:\s*.*$',
+                    f'Next_action: {next_action_value}',
+                    fm_body,
+                    flags=re.MULTILINE,
+                )
+            else:
+                if fm_body and not fm_body.endswith("\n"):
+                    fm_body += "\n"
+                fm_body += f"Next_action: {next_action_value}"
+
+            ov_content = f"{fm_match.group(1)}{fm_body}{fm_match.group(3)}{ov_content[fm_match.end():]}"
+
     if ov_content != original:
         overview.write_text(ov_content)
-        append_changelog_row(ash_path, "Pushed to `_OVERVIEW.md`", now)
+        append_changelog_row(ash_path, "Pushed to overview file", now)
         return True
 
     return False
@@ -813,7 +852,7 @@ def build_template(
             status_lines.append(f"**Next action:** {overview['next_action']}")
         status_body = "\n".join(status_lines) if status_lines else "<!-- What's the current state of this project? -->"
         next_steps_body = overview.get("next_steps", "<!-- What needs to happen next? -->")
-        sync_note = f"\n| {ts(now)} | Synced from `_OVERVIEW.md` |"
+        sync_note = f"\n| {ts(now)} | Synced from overview file |"
     else:
         status_body = "_No status set._"
         next_steps_body = "_No next steps defined._"
@@ -950,7 +989,7 @@ def cmd_push(args):
         sys.exit(1)
     overview = find_overview(ash_path.parent)
     if overview is None:
-        print(f"Error: no overview file (devme.md / _OVERVIEW.md) found in {ash_path.parent}", file=sys.stderr)
+        print(f"Error: no overview file found in {ash_path.parent}", file=sys.stderr)
         sys.exit(1)
     now = datetime.now()
     if push_to_overview(ash_path, now):
@@ -1075,7 +1114,7 @@ def _upgrade_file(ash_path: Path) -> bool:
 # ── Subcommand: rename-overview ──────────────────────────────────────────────
 
 def cmd_rename_overview(args):
-    """Rename overview files (e.g. _OVERVIEW.md → devme.md) across registered projects."""
+    """Rename overview files (e.g. overview.md → devme.md) across registered projects."""
     new_name = args.new_name
     if args.path:
         search_roots = [Path(args.path).expanduser().resolve()]
@@ -1120,19 +1159,17 @@ def cmd_rename_overview(args):
 # ── Subcommand: watch ────────────────────────────────────────────────────────
 
 def cmd_watch(args):
-    """Poll companion file and auto-push to _OVERVIEW.md whenever it's modified."""
+    """Poll companion file and auto-push to the overview file whenever it's modified."""
     import time
 
     target = Path(args.path).expanduser().resolve()
     ash_path = target / MD_FILE if target.is_dir() else target
-    overview = ash_path.parent / "_OVERVIEW.md"
-
     if not ash_path.exists():
         print(f"Error: no {MD_FILE} found at {ash_path}", file=sys.stderr)
         sys.exit(1)
     overview = find_overview(ash_path.parent)
     if overview is None:
-        print(f"Error: no overview file (devme.md / _OVERVIEW.md) found in {ash_path.parent}", file=sys.stderr)
+        print(f"Error: no overview file found in {ash_path.parent}", file=sys.stderr)
         sys.exit(1)
 
     interval = args.interval
@@ -1152,7 +1189,7 @@ def cmd_watch(args):
                 last_mtime = mtime
                 now = datetime.now()
                 if push_to_overview(ash_path, now):
-                    print(f"  [{ts(now)}] Pushed changes to _OVERVIEW.md")
+                    print(f"  [{ts(now)}] Pushed changes to overview file")
                 else:
                     print(f"  [{ts(now)}] No relevant changes to push")
     except KeyboardInterrupt:
@@ -1557,17 +1594,17 @@ def main():
     init_p.add_argument("path", nargs="?", default=".", help="Target directory (default: .)")
     init_p.add_argument("--force", action="store_true", help="Overwrite existing companion file")
 
-    update_p = sub.add_parser("update", help="Refresh navigation + pull from _OVERVIEW.md")
+    update_p = sub.add_parser("update", help="Refresh navigation + pull from overview file")
     update_p.add_argument("path", nargs="?", default=".", help="Target directory (default: .)")
 
-    push_p = sub.add_parser("push", help="Push Status/Next Steps from companion file to _OVERVIEW.md")
+    push_p = sub.add_parser("push", help="Push Status/Next Steps from companion file to overview file")
     push_p.add_argument("path", nargs="?", default=".", help="Target directory (default: .)")
 
     upgrade_p = sub.add_parser("upgrade", help="Patch structure of existing companion files (tree, collapsible sections)")
     upgrade_p.add_argument("path", nargs="?", default=".", help="Target directory (default: .)")
     upgrade_p.add_argument("--all", action="store_true", help="Upgrade all registered companion files")
 
-    rename_p = sub.add_parser("rename-overview", help="Rename overview files (e.g. _OVERVIEW.md → devme.md)")
+    rename_p = sub.add_parser("rename-overview", help="Rename overview files (e.g. overview.md → devme.md)")
     rename_p.add_argument("new_name", help="Target filename (e.g. devme.md)")
     rename_p.add_argument("path", nargs="?", default=None, help="Directory to search (default: all registered projects)")
 
