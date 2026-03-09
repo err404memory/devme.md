@@ -57,13 +57,15 @@ devme install
 
 On finish, the wizard creates `~/.devme/config.json`, installs bundled UI assets (`serve.html`, `wizard.html`) into `~/.devme/`, creates your global hub file, and writes a personalized `~/.devme/QUICKSTART.md`.
 
+After setup, run `devme init` for at least one project directory, then launch `devme serve`. On first load, the interface starts a guided tour automatically. If you have no contexts yet, the tour shows the exact `devme init` command to run next. You can replay the walkthrough any time with the `Tour` button in the top bar.
+
 ---
 
 ## Usage
 
 ```sh
 devme install                  # browser-based setup wizard (run once, or devme install --force to redo)
-devme serve                    # start the local interface (default: localhost:7272)
+devme serve                    # start the local interface (first load starts the guided tour)
 devme init [path]              # create a companion file in a directory
 devme update [path]            # refresh navigation links + pull status from project overview
 devme push [path]              # write status changes back to the project overview file
@@ -346,6 +348,8 @@ This project is open-source and free to use.
 Optional paid support and implementation services may be introduced in the future for teams that want faster setup, migration, and workflow customization.
 
 If that would be useful, open an issue titled `commercial support interest`.
+
+Direct support links will be added here once funding channels are set up.
 
 ---
 

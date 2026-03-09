@@ -109,23 +109,28 @@ The config file lives at `~/.devme/config.json`. The CLI reads it on every run, 
 
 ## First Run
 
-**Start the interface:**
+1. Start the interface:
 
 ```sh
 devme serve
 ```
 
-Open the URL shown in the terminal (default: `http://localhost:7272`). You'll see an empty sidebar — no projects yet.
+Open the URL shown in the terminal (default: `http://localhost:7272`). On first load, the guided tour starts automatically.
 
-**Initialize your first companion file:**
+2. Guided tour behavior:
+
+- If contexts already exist, the tour walks the sidebar, content area, annotations, and sync loop.
+- If no contexts exist yet, the tour points you to the `devme init` command to run next.
+
+3. Initialize your first companion file:
 
 ```sh
 devme init ~/projects/my-project
 ```
 
-This creates `~/projects/my-project/me.md` (or whatever your `filename` is set to), registers it in your global index, and back-propagates links to any neighboring companion files.
+This creates `~/projects/my-project/me.md` (or whatever your `filename` is set to), registers it in your global index, and links it with neighboring companion files.
 
-Reload the interface — your project appears in the sidebar. Click it to see the companion file rendered with full markdown support.
+4. Reload the interface. Your project appears in the sidebar, and you can replay the walkthrough any time with the top-bar `Tour` button.
 
 ---
 
@@ -316,6 +321,9 @@ Run `devme install --force` once. This refreshes bundled UI assets and writes co
 
 **Interface loads but sidebar is empty**
 Run `devme init [path]` on at least one directory first. The sidebar only shows registered projects.
+
+**Guided tour doesn't appear**
+The tour runs automatically only the first time in each browser profile. Click the `Tour` button in the top bar to replay it any time.
 
 **Companion file exists but doesn't appear in sidebar**
 Run `devme refresh` to rebuild the global index. This picks up any files that were created manually or outside the CLI.

@@ -925,6 +925,73 @@ button:hover { color: var(--text); border-color: var(--accent); background: var(
 .pnm-save { color: var(--accent); border-color: var(--accent); background: var(--active); }
 .pnm-save:hover { background: color-mix(in srgb, var(--accent) 22%, transparent); }
 
+/* ── Guided tour ───────────────────────────────────────────────────────────── */
+#tour-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, .6);
+  z-index: 2400;
+  display: none;
+}
+
+#tour-popover {
+  position: fixed;
+  z-index: 2410;
+  width: 380px;
+  max-width: calc(100vw - 2rem);
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: .95rem 1rem .9rem;
+  box-shadow: 0 14px 40px rgba(0, 0, 0, .55);
+  display: none;
+}
+
+#tour-popover h3 {
+  font-size: .95rem;
+  color: var(--text);
+  margin-bottom: .35rem;
+}
+
+.tour-kicker {
+  font-size: .65rem;
+  text-transform: uppercase;
+  letter-spacing: .11em;
+  font-weight: 700;
+  color: var(--accent);
+  opacity: .85;
+  margin-bottom: .45rem;
+}
+
+.tour-body {
+  font-size: .84rem;
+  color: var(--dim);
+  line-height: 1.6;
+}
+
+.tour-actions {
+  margin-top: .9rem;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: .6rem;
+}
+
+.tour-nav {
+  display: inline-flex;
+  align-items: center;
+  gap: .45rem;
+}
+
+.tour-highlight {
+  position: relative;
+  z-index: 2420;
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+  box-shadow: 0 0 0 4px color-mix(in srgb, var(--accent) 16%, transparent), 0 0 22px color-mix(in srgb, var(--accent) 40%, transparent);
+  border-radius: 6px;
+}
+
 </style>
 </head>
 <body>
@@ -948,6 +1015,7 @@ button:hover { color: var(--text); border-color: var(--accent); background: var(
     <div class="tbr-actions">
       <div id="dot" title="Live reload"></div>
       <button id="bookmark-btn" title="Bookmark this file">⚡</button>
+      <button id="tour-btn" title="Replay guided tour">Tour</button>
       <button id="open-btn">Open in __EDITOR_LABEL__</button>
     </div>
   </div>
@@ -1862,6 +1930,7 @@ document.getElementById('hub-link').addEventListener('click', () => {
 document.getElementById('open-btn').addEventListener('click', () =>
   fetch('/open?path=' + encodeURIComponent(cur))
 );
+document.getElementById('tour-btn').addEventListener('click', () => startTour(true));
 window.addEventListener('popstate', e => { if (e.state && e.state.path) loadFile(e.state.path); });
 
 /* ── Bookmarks ────────────────────────────────────────────────────────────── */
@@ -1939,8 +2008,229 @@ document.getElementById('bookmark-btn').addEventListener('click', () => {
   updateBookmarkBtn(cur);
 });
 
+/* ── Guided tour ───────────────────────────────────────────────────────────── */
+const TOUR_KEY = 'devme-tour-complete-v1';
+const tourState = {
+  active: false,
+  steps: [],
+  index: 0,
+  target: null,
+};
+
+const tourOverlay = document.createElement('div');
+tourOverlay.id = 'tour-overlay';
+const tourPopover = document.createElement('div');
+tourPopover.id = 'tour-popover';
+document.body.appendChild(tourOverlay);
+document.body.appendChild(tourPopover);
+
+function buildTourSteps() {
+  const hasContexts = allItems.some(i => i.path !== HUB_PATH);
+  const steps = [
+    {
+      kicker: 'Guided Tour',
+      title: 'Welcome to devme',
+      body: 'Your <code>overview.md</code> is the source of truth. The companion file in each folder is the execution context for that area.',
+      target: null,
+    },
+    {
+      kicker: 'Sidebar',
+      title: 'Browse your context mesh',
+      body: 'Use this tree to move between contexts quickly. Click a context name to load it.',
+      target: '#mesh-tree',
+    },
+    {
+      kicker: 'Find Faster',
+      title: 'Filter and sort contexts',
+      body: 'Use the filter box to narrow the list and toggle A-Z/Tree to switch how contexts are grouped.',
+      target: '#sb-controls',
+    },
+  ];
+
+  if (hasContexts) {
+    steps.push(
+      {
+        kicker: 'Open a Context',
+        title: 'Start with a project',
+        body: 'Pick a context from the sidebar to view its status, notes, and navigation links.',
+        target: () => [...document.querySelectorAll('#mesh-tree .mi[data-path]')].find(el => el.dataset.path !== HUB_PATH) || null,
+      },
+      {
+        kicker: 'Reading Pane',
+        title: 'Main content area',
+        body: 'This panel renders markdown and code for the selected context file.',
+        target: '#content',
+      },
+      {
+        kicker: 'Notes',
+        title: 'Annotate what matters',
+        body: 'Add a short context note to capture intent, blockers, or reminders for this page.',
+        target: () => document.getElementById('page-ann-icon') || document.getElementById('content'),
+      },
+      {
+        kicker: 'Quick Access',
+        title: 'Bookmark key pages',
+        body: 'Use bookmarks for frequently visited contexts so they stay one click away.',
+        target: '#bookmark-btn',
+      },
+      {
+        kicker: 'Edit Flow',
+        title: 'Open in your editor',
+        body: 'Use this button to jump directly into your configured editor for the current path.',
+        target: '#open-btn',
+      }
+    );
+  } else {
+    steps.push({
+      kicker: 'First Context',
+      title: 'Create your first context',
+      body: 'No contexts found yet. Start one with <code>devme init ~/projects/my-project</code>, then reload this page.',
+      target: '#mesh-tree',
+    });
+  }
+
+  steps.push(
+    {
+      kicker: 'Sync Loop',
+      title: 'Keep docs and code aligned',
+      body: 'Push updates from your workspace with <code>devme push [path]</code> and pull refreshed context with <code>devme update [path]</code>.',
+      target: null,
+    },
+    {
+      kicker: 'Replay Anytime',
+      title: 'Tour complete',
+      body: 'You can replay this walkthrough whenever you want from the Tour button.',
+      target: '#tour-btn',
+    }
+  );
+
+  return steps;
+}
+
+function resolveTourTarget(step) {
+  if (!step || !step.target) return null;
+  if (typeof step.target === 'function') return step.target();
+  if (typeof step.target === 'string') return document.querySelector(step.target);
+  return step.target instanceof Element ? step.target : null;
+}
+
+function clearTourHighlight() {
+  if (tourState.target) {
+    tourState.target.classList.remove('tour-highlight');
+    tourState.target = null;
+  }
+}
+
+function positionTourPopover(target) {
+  const pad = 12;
+  const vw = window.innerWidth;
+  const vh = window.innerHeight;
+  const popRect = tourPopover.getBoundingClientRect();
+  const popW = popRect.width || 380;
+  const popH = popRect.height || 220;
+
+  if (!target) {
+    tourPopover.style.left = Math.max(pad, (vw - popW) / 2) + 'px';
+    tourPopover.style.top = Math.max(pad, (vh - popH) / 2) + 'px';
+    return;
+  }
+
+  const rect = target.getBoundingClientRect();
+  let left = rect.left;
+  let top = rect.bottom + 10;
+
+  if (top + popH > vh - pad) top = rect.top - popH - 10;
+  if (top < pad) top = Math.max(pad, (vh - popH) / 2);
+  if (left + popW > vw - pad) left = vw - popW - pad;
+  if (left < pad) left = pad;
+
+  tourPopover.style.left = left + 'px';
+  tourPopover.style.top = top + 'px';
+}
+
+function renderTourStep() {
+  const step = tourState.steps[tourState.index];
+  if (!step) {
+    finishTour(false);
+    return;
+  }
+
+  clearTourHighlight();
+  const target = resolveTourTarget(step);
+  if (target) {
+    target.classList.add('tour-highlight');
+    tourState.target = target;
+  }
+
+  const isFirst = tourState.index === 0;
+  const isLast = tourState.index === tourState.steps.length - 1;
+  const nextLabel = isLast ? 'Done' : 'Next';
+
+  tourPopover.innerHTML = `
+    <div class="tour-kicker">${step.kicker || 'Tour'}</div>
+    <h3>${step.title}</h3>
+    <div class="tour-body">${step.body}</div>
+    <div class="tour-actions">
+      <button type="button" id="tour-skip">Skip</button>
+      <div class="tour-nav">
+        <button type="button" id="tour-back" ${isFirst ? 'disabled' : ''}>Back</button>
+        <button type="button" id="tour-next">${nextLabel}</button>
+      </div>
+    </div>
+  `;
+
+  tourPopover.querySelector('#tour-skip').addEventListener('click', () => finishTour(true));
+  tourPopover.querySelector('#tour-back').addEventListener('click', () => {
+    if (tourState.index > 0) {
+      tourState.index -= 1;
+      renderTourStep();
+    }
+  });
+  tourPopover.querySelector('#tour-next').addEventListener('click', () => {
+    if (isLast) finishTour(true);
+    else {
+      tourState.index += 1;
+      renderTourStep();
+    }
+  });
+
+  positionTourPopover(target);
+}
+
+function startTour(force = false) {
+  if (!force && localStorage.getItem(TOUR_KEY)) return;
+  tourState.steps = buildTourSteps();
+  tourState.index = 0;
+  tourState.active = true;
+  tourOverlay.style.display = 'block';
+  tourPopover.style.display = 'block';
+  renderTourStep();
+}
+
+function finishTour(markComplete = true) {
+  clearTourHighlight();
+  tourOverlay.style.display = 'none';
+  tourPopover.style.display = 'none';
+  tourPopover.replaceChildren();
+  tourState.active = false;
+  tourState.steps = [];
+  tourState.index = 0;
+  if (markComplete) localStorage.setItem(TOUR_KEY, '1');
+}
+
+window.addEventListener('resize', () => {
+  if (!tourState.active) return;
+  positionTourPopover(tourState.target);
+});
+
 renderBookmarks();
-loadNotes().then(() => { loadMesh(); loadFile(INIT); setupSSE(); });
+(async () => {
+  await loadNotes();
+  await loadMesh();
+  await loadFile(INIT);
+  setupSSE();
+  setTimeout(() => startTour(false), 350);
+})();
 
 // ── Sidebar resize ──────────────────────────────────────────────────────────
 (function() {
