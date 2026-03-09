@@ -27,22 +27,26 @@ The section schema in each companion file — Status, Next Steps, Change Log, Se
 
 ## Installation
 
-**1. Copy the CLI to your PATH:**
+**1. Install devme:**
 
 ```sh
-cp devme ~/.local/bin/devme
-chmod +x ~/.local/bin/devme
+pipx install devme-md
 ```
 
-> **PATH note:** If `devme: command not found`, add `~/.local/bin` to your shell first:
-> ```sh
-> echo 'export PATH="$HOME/.local/bin:$PATH"' >> ~/.bashrc && source ~/.bashrc
-> ```
+PyPI package name is `devme-md`; the installed command is `devme`.
+
+> **pipx note:** If `pipx` is missing, install it first (`python3 -m pip install --user pipx`) and run `python3 -m pipx ensurepath`.
 
 Verify it works:
 
 ```sh
 devme --help
+```
+
+From a local clone instead of PyPI:
+
+```sh
+pipx install .
 ```
 
 **2. Run the setup wizard:**
@@ -51,7 +55,7 @@ devme --help
 devme install
 ```
 
-Run this from the directory where you cloned devme, so it can find `serve.html` and `wizard.html`. A browser window opens with a step-by-step setup wizard. It walks you through:
+A browser window opens with a step-by-step setup wizard. It walks you through:
 
 - Choosing your companion filename (e.g. `alex.md` or `me.md`)
 - Setting your name, sidebar title, editor, timezone, and accent color
@@ -59,13 +63,11 @@ Run this from the directory where you cloned devme, so it can find `serve.html` 
 
 On finish, the wizard:
 - Creates `~/.devme/config.json` with your values
-- Copies `serve.html` and `wizard.html` to `~/.devme/`
+- Installs bundled UI assets (`serve.html`, `wizard.html`) into `~/.devme/`
 - Creates your global hub file (`~/.devme/<your-filename>`)
 - Writes `~/.devme/QUICKSTART.md` — a personalized quick reference
 
 To reconfigure, run `devme install --force` or edit `~/.devme/config.json` directly.
-
-> **Migration note:** `devme` now uses `~/.devme/` by default. Legacy `~/.ash/config.json` is still read automatically for compatibility. Run `devme install --force` to regenerate files in `~/.devme/`.
 
 ---
 
@@ -308,6 +310,9 @@ Make sure `~/.local/bin` is on your PATH. Add this to your shell config (`~/.bas
 ```sh
 export PATH="$HOME/.local/bin:$PATH"
 ```
+
+**Migrating from early preview builds (`ash`)**
+Run `devme install --force` once. This refreshes bundled UI assets and writes config into `~/.devme/`. Legacy `~/.ash/config.json` is still read during transition.
 
 **Interface loads but sidebar is empty**
 Run `devme init [path]` on at least one directory first. The sidebar only shows registered projects.

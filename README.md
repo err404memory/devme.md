@@ -38,21 +38,24 @@ hooks/       Session auto-logging pipeline (optional, see below)
 **Requirements:** Python 3.10+, a modern browser.
 
 ```sh
-cp devme ~/.local/bin/devme
-chmod +x ~/.local/bin/devme
+pipx install devme-md
 devme install
 ```
 
-> **PATH note:** If `devme: command not found` after copying, add `~/.local/bin` to your shell PATH:
-> ```sh
-> echo 'export PATH="$HOME/.local/bin:$PATH"' >> ~/.bashrc && source ~/.bashrc
-> ```
+PyPI package name is `devme-md`; the installed command is `devme`.
 
-> **Migration note:** `devme` now uses `~/.devme/` by default. Legacy `~/.ash/config.json` is still read automatically for compatibility. Run `devme install --force` to regenerate files in `~/.devme/`.
+> **pipx note:** If `pipx` is missing, install it first (`python3 -m pip install --user pipx`) and run `python3 -m pipx ensurepath`.
 
-`devme install` opens a browser-based setup wizard. It walks you through choosing your companion filename, editor, timezone, and accent color — with a live preview of the interface as you configure it. Run it from the directory where you cloned the repo so it can find `serve.html` and `wizard.html`.
+From a local clone (development install):
 
-On finish, the wizard creates `~/.devme/config.json`, copies the web interface, creates your global hub file, and writes a personalized `~/.devme/QUICKSTART.md`.
+```sh
+pipx install .
+devme install
+```
+
+`devme install` opens a browser-based setup wizard. It walks you through choosing your companion filename, editor, timezone, and accent color — with a live preview of the interface as you configure it.
+
+On finish, the wizard creates `~/.devme/config.json`, installs bundled UI assets (`serve.html`, `wizard.html`) into `~/.devme/`, creates your global hub file, and writes a personalized `~/.devme/QUICKSTART.md`.
 
 ---
 
@@ -73,6 +76,22 @@ devme rm [path] --delete       # remove from index and also delete the companion
 ```
 
 `devme init` registers the new file in your global index and back-propagates: neighboring companion files in parent and sibling directories automatically gain links to the new one.
+
+---
+
+## Platform Compatibility
+
+- **Tested:** Linux
+- **Likely works:** macOS (same POSIX path model as Linux)
+- **Use WSL for now:** Windows native path handling in the web viewer is still being hardened
+
+No specific shell is required for the core CLI (`devme ...`) — it runs as a normal Python command. 
+
+Optional pieces have narrower support:
+- `hooks/` scripts are Bash-oriented
+- `hooks/devme-init` and `hooks/devme-open` are KDE Dolphin helpers (Linux-specific)
+
+**Roadmap:** improve native Windows path handling and provide platform-specific helper script options.
 
 ---
 
@@ -299,6 +318,8 @@ If your filesystem is mounted across machines at different paths (e.g. a server 
 ## Changelog
 
 ### 2026-03-08
+
+**Preview migration note** — users coming from early pre-release `ash` builds can run `devme install --force` to refresh assets and write config into `~/.devme/`. Existing legacy config is still read automatically during transition.
 
 **Session auto-logging pipeline** — added `hooks/` with 7 scripts: `session-close` (bash EXIT trap), `parse-ai-session` (Claude Code JSONL → structured summary), `parse-ghostty-session` (terminal log → structured summary), `update-session-docs` (appends summaries to companion files), `tmux-start-log` (tmux pipe-pane logging), `devme-init` and `devme-open` (Dolphin service menu wrappers). Every terminal session is now automatically summarized and written into the Session Log of the relevant companion file.
 

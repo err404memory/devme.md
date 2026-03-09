@@ -1,0 +1,42 @@
+[build-system]
+requires = ["hatchling>=1.24.0"]
+build-backend = "hatchling.build"
+
+[project]
+name = "devme-md"
+version = "0.1.0"
+description = "Filesystem companion markdown context CLI and local web UI"
+readme = "README.md"
+license = "MIT"
+requires-python = ">=3.10"
+authors = [
+  { name = "err404memory" },
+]
+classifiers = [
+  "Development Status :: 3 - Alpha",
+  "Environment :: Console",
+  "Intended Audience :: Developers",
+  "License :: OSI Approved :: MIT License",
+  "Operating System :: OS Independent",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.10",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+  "Topic :: Software Development :: Documentation",
+  "Topic :: Utilities",
+]
+
+[project.scripts]
+devme = "devme.cli:main"
+
+[project.urls]
+Homepage = "https://github.com/err404memory/devme.md"
+Repository = "https://github.com/err404memory/devme.md"
+Issues = "https://github.com/err404memory/devme.md/issues"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/devme"]
+
+[tool.hatch.build.targets.wheel.force-include]
+"serve.html" = "src/devme/serve.html"
+"wizard.html" = "src/devme/wizard.html"
