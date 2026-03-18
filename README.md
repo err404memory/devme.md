@@ -12,7 +12,7 @@ Context notes for your filesystem. Every directory gets a companion markdown fil
 
 A well-organized filesystem is still opaque without context. What is this directory for? Why does this file exist? What was in progress when you last had this project open?
 
-devme gives every directory a companion file (`me.md`, named for you — configurable). That file holds whatever context belongs to that location: status, next steps, a live directory tree, a change log, a session log. Each file links to its neighbors — parent, siblings, children — forming a navigable mesh across your whole filesystem.
+devme gives every directory a companion file (`me.md` by default, configurable). That file holds whatever context belongs to that location: status, next steps, a live directory tree, a change log, a session log. Each file links to its neighbors — parent, siblings, children — forming a navigable mesh across your whole filesystem.
 
 The annotation layer is the core feature. You can attach a note to any file or directory in the interface without modifying it. The note is stored separately from your files, appears inline when you open that location in the viewer, and travels with the path across sessions. It's the equivalent of a sticky note on a manila folder in a filing cabinet — the folder's contents are unchanged, but the context is there every time you pull it out: what it's for, what's in progress, what to watch out for.
 
@@ -214,7 +214,7 @@ For backward compatibility, `ASH_SESSION_THRESHOLD` is still accepted.
 
 ### Dolphin integration
 
-`hooks/devme-init` and `hooks/devme-open` are service menu wrappers for KDE Dolphin. They fork immediately so Dolphin doesn't freeze, use `notify-send` for desktop feedback, and resolve the `devme` binary from `$PATH`.
+`hooks/devme-init` and `hooks/devme-open` are service menu helpers. They fork immediately so Dolphin doesn't freeze, use `notify-send` for desktop feedback, and resolve the `devme` binary from `$PATH`.
 
 ```sh
 cp hooks/devme-init  ~/.local/bin/
@@ -232,7 +232,7 @@ chmod +x ~/.local/bin/devme-init ~/.local/bin/devme-open
 # project-name
 
 ## Navigation
-- [My Mesh](~/.devme/me.md)
+- [Context Hub](~/.devme/me.md)
 - Up: [parent-dir](/path/to/parent/me.md)
 - Nearby: [sibling-project](/path/to/sibling/me.md)
 
@@ -290,7 +290,7 @@ The AI Notes section automatically detects `CLAUDE.md`, session summary files, a
 |-----|---------|-------------|
 | `username` | `"you"` | Displayed in the sidebar header |
 | `filename` | `"me.md"` | Companion filename looked for in each directory |
-| `hub_label` | `"My Context Hub"` | Browser tab and sidebar title |
+| `hub_label` | `"Context Hub"` | Browser tab and sidebar title |
 | `hub_dir` | `"~/.devme"` | Location of the global companion file and `serve.html` |
 | `editor` | `"code"` | Editor launched by the "Open in …" button |
 | `accent_color` | `"#7b96e8"` | Primary accent color throughout the UI |

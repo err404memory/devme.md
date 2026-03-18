@@ -3,7 +3,7 @@
 
   "username":             "yourname",
   "filename":             "me.md",
-  "hub_label":            "My Context Hub",
+  "hub_label":            "Context Hub",
   "hub_dir":              "~/.devme",
   "editor":               "code",
   "accent_color":         "#7b96e8",

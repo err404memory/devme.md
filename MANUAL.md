@@ -177,7 +177,7 @@ Notes are stored in `~/.devme/file-notes.json` (configurable via `notes_file`). 
 `/path/to/project`
 
 ## Navigation
-- [My Context Hub](~/.devme/me.md)
+- [Context Hub](~/.devme/me.md)
 - Up: [parent-dir](/path/to/parent/me.md)
 - Nearby: [sibling-project](/path/to/sibling/me.md)
 - Down: [child-project](/path/to/child/me.md)
