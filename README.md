@@ -1,6 +1,6 @@
 # devme
 
-Context notes for your filesystem. Every directory gets a companion markdown file — attach notes to any file or folder, navigate your whole codebase from one local interface, and keep project status in sync with your project manager without touching anything it annotates.
+Context notes for your filesystem. Each tracked directory gets a companion Markdown file so you can keep status, notes, next steps, and annotations attached to where the work actually lives without modifying the underlying files.
 
 ---
 
@@ -8,21 +8,97 @@ Context notes for your filesystem. Every directory gets a companion markdown fil
 > After running `devme install`, your actual configured filename (e.g. `alex.md`) will be used on your system.
 > Wherever docs say `me.md`, substitute your configured filename.
 
-## The idea
+## Uses
 
-A well-organized filesystem is still opaque without context. What is this directory for? Why does this file exist? What was in progress when you last had this project open?
+- project context that lives with the project folder
+- notes attached to files or directories without modifying them
+- local status and next steps beside active work
+- a cross-project context layer over your filesystem
+- a durable “what is this, what changed, what matters here?” trail
+- AI-readable project context that stays in plain Markdown
 
-devme gives every directory a companion file (`me.md` by default, configurable). That file holds whatever context belongs to that location: status, next steps, a live directory tree, a change log, a session log. Each file links to its neighbors — parent, siblings, children — forming a navigable mesh across your whole filesystem.
+## Concept
 
-The annotation layer is the core feature. You can attach a note to any file or directory in the interface without modifying it. The note is stored separately from your files, appears inline when you open that location in the viewer, and travels with the path across sessions. It's the equivalent of a sticky note on a manila folder in a filing cabinet — the folder's contents are unchanged, but the context is there every time you pull it out: what it's for, what's in progress, what to watch out for.
+`devme` adds one companion Markdown file to each directory you choose to track. That file holds local context for that location: status, next steps, a directory view, a change log, and a session log. Companion files link to parents, siblings, and children, so tracked directories form a navigable mesh.
 
-That same structure makes the files easy for AI assistants to read and maintain alongside you. The consistent section schema — Status, Next Steps, Change Log, Session Log — maps directly to how an AI assistant tracks project state, so your context mesh and your AI context stay naturally in sync.
+The annotation layer is the core feature. You can attach a note to any file or directory in the interface without modifying the underlying file. Notes are stored separately, rendered inline in the viewer, and keyed to the path.
+
+The default section schema — Status, Next Steps, Change Log, Session Log — also makes the files easy to maintain with AI assistants if you use them.
+
+## Fit
+
+Best for:
+
+- a context layer over real directories instead of a separate notes silo
+- filesystem-local notes that stay attached to where the work happens
+- annotations without editing the files you are annotating
+- a browser-based view over plain markdown companion files
+
+Less useful for:
+
+- a standalone notes app with no connection to your directories
+- a project dashboard first and a filesystem layer second
+- a system that hides the markdown files from you
+
+## Examples
+
+`devme` works on its own. It is most useful when your work is already organized by directories and you want context to stay attached to that structure.
+
+Examples:
+
+- a projects folder with many active repos
+- a homelab tree with services, scripts, and deployment notes
+- a research/workspace directory with long-lived notes beside source files
+- a mixed personal/work machine where you need context to survive interruptions
 
 <!-- screenshot: full interface — sidebar project tree on the left, rendered context file on the right showing status card and navigation links -->
 
 ---
 
-## Structure
+## Start
+
+Install and run the setup wizard:
+
+```sh
+pipx install devme-md
+devme install
+```
+
+Then create your first companion file and open the interface:
+
+```sh
+devme init ~/projects/my-project
+devme serve
+```
+
+Success criteria:
+
+- the browser opens the local interface
+- `~/projects/my-project/me.md` (or your configured filename) exists
+- the project appears in the sidebar
+- you can click it and read or edit its context
+
+You do not need `whatdoing`, session logging, Dolphin helpers, or any other integration for this first success path.
+
+## Compatibility
+
+- **Tested:** Linux
+- **Likely works:** macOS
+- **Use WSL for now:** Windows native path handling in the web viewer is still being hardened
+
+Requirements:
+
+- Python 3.10+
+- a modern browser
+
+If your system is not the default target:
+
+- on Windows, use WSL for the best current experience
+- if you do not want shell hooks, skip the optional `hooks/` setup entirely
+- if you do not use `whatdoing`, skip that integration entirely
+- if you only want the core tool, you only need `devme install`, `devme init`, and `devme serve`
+
+## Layout
 
 ```
 devme        CLI — init, serve, sync, manage
@@ -33,7 +109,7 @@ hooks/       Session auto-logging pipeline (optional, see below)
 
 ---
 
-## Setup
+## Install
 
 **Requirements:** Python 3.10+, a modern browser.
 
@@ -53,15 +129,15 @@ pipx install .
 devme install
 ```
 
-`devme install` opens a browser-based setup wizard. It walks you through choosing your companion filename, editor, timezone, and accent color — with a live preview of the interface as you configure it.
+`devme install` opens a browser-based setup wizard. It walks you through choosing your companion filename, editor, timezone, and accent color, and shows a live preview of the interface while you do it.
 
-On finish, the wizard creates `~/.devme/config.json`, installs bundled UI assets (`serve.html`, `wizard.html`) into `~/.devme/`, creates your global hub file, and writes a personalized `~/.devme/QUICKSTART.md`.
+When it finishes, the wizard creates `~/.devme/config.json`, installs bundled UI assets (`serve.html`, `wizard.html`) into `~/.devme/`, creates your global hub file, and writes `~/.devme/QUICKSTART.md`.
 
 After setup, run `devme init` for at least one project directory, then launch `devme serve`. On first load, the interface starts a guided tour automatically. If you have no contexts yet, the tour shows the exact `devme init` command to run next. You can replay the walkthrough any time with the `Tour` button in the top bar.
 
 ---
 
-## Usage
+## Commands
 
 ```sh
 devme install                  # browser-based setup wizard (run once, or devme install --force to redo)
@@ -77,23 +153,17 @@ devme rm [path]                # remove a directory from the mesh index
 devme rm [path] --delete       # remove from index and also delete the companion file
 ```
 
-`devme init` registers the new file in your global index and back-propagates: neighboring companion files in parent and sibling directories automatically gain links to the new one.
+`devme init` registers the new file in the global index and updates navigation links in nearby companion files.
 
 ---
 
-## Platform Compatibility
+## Workflow
 
-- **Tested:** Linux
-- **Likely works:** macOS (same POSIX path model as Linux)
-- **Use WSL for now:** Windows native path handling in the web viewer is still being hardened
-
-No specific shell is required for the core CLI (`devme ...`) — it runs as a normal Python command. 
-
-Optional pieces have narrower support:
-- `hooks/` scripts are Bash-oriented
-- `hooks/devme-init` and `hooks/devme-open` are KDE Dolphin helpers (Linux-specific)
-
-**Roadmap:** improve native Windows path handling and provide platform-specific helper script options.
+1. Run `devme init` in a directory you care about
+2. Open `devme serve`
+3. Browse to that directory in the interface
+4. Update Status, Next Steps, and Session Log as work changes
+5. Add annotations to files or folders that need extra context
 
 ---
 
@@ -117,13 +187,13 @@ Optional pieces have narrower support:
 
 ---
 
-## whatdoing sync
+## Sync
 
 > **Optional.** This section only applies if you use the `whatdoing` project manager. Skip it if you don't.
 
-devme integrates with [`whatdoing`](https://github.com/err404memory/whatdoing) project overview files. Canonical filename is `overview.md`; legacy names are still read for compatibility: `project.md`, `_OVERVIEW.md`, `PROJECT.md`, and `devme.md`. These are the detailed per-project documents maintained by whatdoing — tech stack, commands, status, roadmap, blockers — the full project record. The companion file is intentionally lighter: navigation, annotations, session log, and a live window into the overview's current status.
+devme integrates with [`whatdoing`](https://github.com/err404memory/whatdoing) project overview files. The canonical filename is `overview.md`; legacy names are still read for compatibility: `project.md`, `_OVERVIEW.md`, `PROJECT.md`, and `devme.md`. Those files usually hold the fuller project record. The companion file keeps the local context layer: navigation, annotations, session log, and a smaller view of current status.
 
-When one of those overview files exists in a directory, `devme init` pulls its **Status** and **Next Steps** fields into the companion file automatically. From that point you can keep them in sync:
+When one of those overview files exists in a directory, `devme init` pulls its **Status** and **Next Steps** fields into the companion file automatically. After that you can keep them in sync:
 
 ```sh
 devme update [path]   # pull latest from overview file into companion file
@@ -133,15 +203,17 @@ devme watch [path]    # continuous two-way sync on file save
 
 <!-- screenshot: Status card in the viewer showing project status pulled from whatdoing's project.md — Status and Next Steps rendered as a single bordered card -->
 
-The project overview remains the source of truth. The companion file surfaces what matters now — without duplicating the documentation.
+The project overview remains the source of truth. The companion file surfaces current context without duplicating the full project document.
+
+If you do not use `whatdoing`, skip this section entirely. `devme` is complete without it.
 
 ---
 
-## Session auto-logging
+## Logging
 
-The `hooks/` directory contains an optional pipeline that scans your local AI tool logs and terminal session logs — whatever exists on your system — and appends context to your companion files' Session Log automatically.
+The `hooks/` directory contains an optional pipeline that scans local AI tool logs and terminal session logs and appends context to the Session Log in your companion files.
 
-devme has no AI dependency. The hooks are log parsers. On terminal exit, `session-close` checks known locations for recently-closed sessions from Claude Code, Kilo, Codex, Aider, Ghostty, tmux, or any other tool you configure. It reads those logs and extracts what was discussed — decisions, ideas, generated code, session summaries — then appends that context to the companion file for the relevant project directory. No external service is contacted. Nothing is sent anywhere.
+devme has no AI dependency. The hooks are log parsers. On terminal exit, `session-close` checks known locations for recently closed sessions from Claude Code, Kilo, Codex, Aider, Ghostty, tmux, or any other tool you configure. It reads those logs and extracts decisions, ideas, generated code, and session summaries, then appends that context to the companion file for the relevant project directory. No external service is contacted.
 
 ### How it works
 
@@ -154,6 +226,8 @@ terminal exit
 ```
 
 The summary is written into the `## Session Log` section of both the global hub file and the project companion file for whatever directory you were working in.
+
+If you do not want shell hooks or session parsing, skip this section. The core product does not depend on it.
 
 ### Install
 
@@ -222,7 +296,7 @@ chmod +x ~/.local/bin/devme-init ~/.local/bin/devme-open
 
 ---
 
-## Companion file format
+## Format
 
 `devme init` generates a structured file with a fixed section schema:
 
@@ -282,7 +356,7 @@ The AI Notes section automatically detects `CLAUDE.md`, session summary files, a
 
 ---
 
-## Config reference
+## Config
 
 | Key | Default | Description |
 |-----|---------|-------------|
@@ -303,7 +377,7 @@ The AI Notes section automatically detects `CLAUDE.md`, session summary files, a
 
 ### Multi-device paths
 
-If your filesystem is mounted across machines at different paths (e.g. a server mounted via rclone), set `server_prefix_local` and `server_prefix_remote`. Annotations are keyed to a device-agnostic path and resolve correctly on each machine — the same note is visible whether you're on the machine that owns the files or accessing them through a mount.
+If your filesystem is mounted across machines at different paths, set `server_prefix_local` and `server_prefix_remote`. Annotations are keyed to a device-agnostic path, so the same note is visible whether you are on the machine that owns the files or accessing them through a mount.
 
 ---
 
@@ -315,43 +389,15 @@ If your filesystem is mounted across machines at different paths (e.g. a server 
 
 ---
 
-## Changelog
-
-### 2026-03-08
-
-**Preview migration note** — users coming from early pre-release `ash` builds can run `devme install --force` to refresh assets and write config into `~/.devme/`. Existing legacy config is still read automatically during transition.
-
-**Session auto-logging pipeline** — added `hooks/` with 7 scripts: `session-close` (bash EXIT trap), `parse-ai-session` (Claude Code JSONL → structured summary), `parse-ghostty-session` (terminal log → structured summary), `update-session-docs` (appends summaries to companion files), `tmux-start-log` (tmux pipe-pane logging), `devme-init` and `devme-open` (Dolphin service menu wrappers). Every terminal session is now automatically summarized and written into the Session Log of the relevant companion file.
-
-**`devme rm`** — new subcommand removes a directory from the global mesh index. `--delete` flag also removes the companion file from disk.
-
-**Visible status placeholders** — freshly initialized companion files now show `_No status set._` and `_No next steps defined._` instead of invisible HTML comments that rendered as blank cards.
-
-**Sort button** — toggles between `A–Z` and `Tree` labels, making the action clear in both states.
-
-**`_upgrade_file`** — corrected return type annotation from `-> None` to `-> bool`.
-
-**README** — full rewrite: corrected CLI command names, added sticky note concept framing, configurable filename explanation, companion file format example, whatdoing sync section, multi-device path config, roadmap, and screenshot placeholders.
-
-**MANUAL.md** — added full onboarding manual covering installation, configuration, first run, daily workflow, annotations, companion file format, whatdoing integration, multi-device setup, and troubleshooting.
-
-**`config.example.json`** — added example config file with all supported keys and inline instructions.
-
----
-
 ## Support
 
 This project is open-source and free to use.
 
-Optional paid support and implementation services may be introduced in the future for teams that want faster setup, migration, and workflow customization.
-
-If that would be useful, open an issue titled `commercial support interest`.
-
-Direct support links will be added here once funding channels are set up.
+If support or implementation help would be useful, open an issue titled `commercial support interest`.
 
 ---
 
-## Public Safety Check
+## Audit
 
 Run the repo audit before publishing or opening a PR:
 
