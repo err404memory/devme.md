@@ -29,9 +29,6 @@ from pathlib import Path
 def _load_config() -> dict:
     defaults = {"vault_dir": str(Path.home() / "Documents" / "sessions")}
     cfg_path = Path.home() / ".devme" / "config.json"
-    legacy_cfg_path = Path.home() / ".ash" / "config.json"
-    if not cfg_path.exists() and legacy_cfg_path.exists():
-        cfg_path = legacy_cfg_path
     if cfg_path.exists():
         try:
             loaded = json.loads(cfg_path.read_text())
@@ -82,9 +79,9 @@ def clean_log(path: Path) -> tuple[str, str]:
 
 def build_prompt(log_text: str, cwd: str) -> str:
     project = Path(cwd).name if cwd != str(Path.home()) else "home"
-    return f"""You are summarizing a terminal session log for the developer's personal archive.
+    return f"""You are summarizing a terminal session log for a searchable session archive.
 The log is raw terminal output from a Ghostty window (captured via `script`).
-Be specific and concrete — this is reference material the developer will search later.
+Be specific and concrete — this is reference material that should be easy to find later.
 
 Working directory: {cwd}
 Project: {project}

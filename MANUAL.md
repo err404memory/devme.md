@@ -90,7 +90,7 @@ The config file lives at `~/.devme/config.json`. The CLI reads it on every run, 
 |-----|---------|-------------|
 | `username` | `"you"` | Displayed in the sidebar header |
 | `filename` | `"me.md"` | Companion filename created in each directory |
-| `hub_label` | `"My Context Hub"` | Browser tab and sidebar title |
+| `hub_label` | `"Context Hub"` | Browser tab and sidebar title |
 | `hub_dir` | `"~/.devme"` | Where your global companion file and `serve.html` live |
 | `editor` | `"code"` | Editor launched by the "Open in …" button in the interface |
 | `accent_color` | `"#7b96e8"` | Primary accent color throughout the UI |
@@ -252,12 +252,12 @@ The project overview stays the source of truth. The companion file surfaces what
 
 If your filesystem is mounted across machines at different paths (e.g. a server mounted via rclone or SSHFS), set `server_prefix_local` and `server_prefix_remote` so annotations resolve correctly on each machine.
 
-**Example:** You have a server whose `/home/user/` is mounted on your laptop at `~/server/`.
+**Example:** You have a server whose `/srv/projects/` is mounted on your laptop at `~/server/projects/`.
 
 ```json
 {
-  "server_prefix_local":  "~/server",
-  "server_prefix_remote": "/home/user"
+  "server_prefix_local":  "~/server/projects",
+  "server_prefix_remote": "/srv/projects"
 }
 ```
 
@@ -316,8 +316,8 @@ Make sure `~/.local/bin` is on your PATH. Add this to your shell config (`~/.bas
 export PATH="$HOME/.local/bin:$PATH"
 ```
 
-**Migrating from early preview builds (`ash`)**
-Run `devme install --force` once. This refreshes bundled UI assets and writes config into `~/.devme/`. Legacy `~/.ash/config.json` is still read during transition.
+**Migrating from earlier preview builds**
+Run `devme install --force` once. This refreshes bundled UI assets and rewrites config into `~/.devme/`.
 
 **Interface loads but sidebar is empty**
 Run `devme init [path]` on at least one directory first. The sidebar only shows registered projects.

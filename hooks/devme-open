@@ -20,10 +20,6 @@ fi
 # Resolve companion filename from config (default: me.md)
 MD_FILE="me.md"
 CONFIG="$HOME/.devme/config.json"
-LEGACY_CONFIG="$HOME/.ash/config.json"
-if [ ! -f "$CONFIG" ] && [ -f "$LEGACY_CONFIG" ]; then
-    CONFIG="$LEGACY_CONFIG"
-fi
 if [ -f "$CONFIG" ] && command -v python3 &>/dev/null; then
     _fn=$(python3 -c "
 import json, sys

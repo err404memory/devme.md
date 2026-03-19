@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-devme — personal context CLI for the devme companion file system.
+devme — filesystem context CLI for the companion-file system.
 
 Subcommands:
   init [path]     Initialize a companion file in the target directory
@@ -32,19 +32,16 @@ def _load_config() -> dict:
     defaults = {
         "username": "you",
         "filename": "me.md",
-        "hub_label": "Personal Context Hub",
+        "hub_label": "Context Hub",
         "hub_dir": "~/.devme",
-        "editor": "zed",
+        "editor": "code",
         "accent_color": "#7b96e8",
-        "timezone": "America/Los_Angeles",
+        "timezone": "UTC",
         "notes_file": "",  # empty = use hub_dir/file-notes.json
         "server_prefix_local": "",  # e.g. "~/mnt/server" — local mount path
-        "server_prefix_remote": "",  # e.g. "/home/user"  — path on the remote machine
+        "server_prefix_remote": "",  # e.g. "/srv/projects"  — path on the remote machine
     }
     cfg_path = Path.home() / ".devme" / "config.json"
-    legacy_cfg_path = Path.home() / ".ash" / "config.json"
-    if not cfg_path.exists() and legacy_cfg_path.exists():
-        cfg_path = legacy_cfg_path
     if cfg_path.exists():
         import json
 
@@ -60,9 +57,9 @@ CFG = _load_config()
 
 # ── Constants ─────────────────────────────────────────────────────────────────
 
-ASH_DIR = Path(CFG["hub_dir"]).expanduser()
+DEVME_DIR = Path(CFG["hub_dir"]).expanduser()
 MD_FILE = CFG["filename"]  # e.g. "me.md" or "alex.md"
-GLOBAL_ASH = ASH_DIR / MD_FILE
+GLOBAL_DEVME = DEVME_DIR / MD_FILE
 
 NOISE_DIRS = {
     ".git",
@@ -108,7 +105,7 @@ AI_CONTENT_PATTERNS = [
 def _get_notes_file() -> Path:
     cfg = _load_config()
     nf = cfg.get("notes_file", "")
-    return Path(nf).expanduser() if nf else ASH_DIR / "file-notes.json"
+    return Path(nf).expanduser() if nf else DEVME_DIR / "file-notes.json"
 
 
 def _path_to_key(abs_path: str) -> str:
@@ -317,7 +314,7 @@ def collect_sibling_links(target_dir: Path) -> list:
 
 def build_navigation_lines(parents: list, children: list, siblings: list) -> list:
     """Return the list items for a Navigation section."""
-    lines = [f"- [{CFG['hub_label']}]({GLOBAL_ASH})"]
+    lines = [f"- [{CFG['hub_label']}]({GLOBAL_DEVME})"]
     for name, path in parents:
         lines.append(f"- Up: [{name}]({path})")
     for name, path in children:
@@ -464,19 +461,19 @@ GLOBAL_TEMPLATE = """\
 
 def ensure_global_ash() -> None:
     """Create the global companion file if it doesn't exist."""
-    ASH_DIR.mkdir(parents=True, exist_ok=True)
-    if not GLOBAL_ASH.exists():
-        GLOBAL_ASH.write_text(
+    DEVME_DIR.mkdir(parents=True, exist_ok=True)
+    if not GLOBAL_DEVME.exists():
+        GLOBAL_DEVME.write_text(
             GLOBAL_TEMPLATE.format(hub_label=CFG["hub_label"], filename=MD_FILE)
         )
-        print(f"Created: {GLOBAL_ASH}")
+        print(f"Created: {GLOBAL_DEVME}")
 
 
 def _migrate_global_index_to_table() -> None:
     """One-time migration: convert list-style Project Index to table format."""
-    if not GLOBAL_ASH.exists():
+    if not GLOBAL_DEVME.exists():
         return
-    content = GLOBAL_ASH.read_text()
+    content = GLOBAL_DEVME.read_text()
     if "| Project |" in content:
         return  # Already a table
     marker = "## Project Index\n"
@@ -502,7 +499,7 @@ def _migrate_global_index_to_table() -> None:
     table_lines.append("")
 
     content = content[:section_start] + "\n".join(table_lines) + content[section_end:]
-    GLOBAL_ASH.write_text(content)
+    GLOBAL_DEVME.write_text(content)
 
 
 def register_project_in_global(project_ash: Path, now: datetime = None) -> None:
@@ -510,7 +507,7 @@ def register_project_in_global(project_ash: Path, now: datetime = None) -> None:
     ensure_global_ash()
     _migrate_global_index_to_table()
 
-    content = GLOBAL_ASH.read_text()
+    content = GLOBAL_DEVME.read_text()
     if str(project_ash) in content:
         update_global_entry(project_ash, now)
         return
@@ -540,15 +537,15 @@ def register_project_in_global(project_ash: Path, now: datetime = None) -> None:
     insert_after = last_data_row if last_data_row >= 0 else separator_row
     if insert_after >= 0:
         lines.insert(insert_after + 1, new_row)
-        GLOBAL_ASH.write_text("\n".join(lines) + "\n")
+        GLOBAL_DEVME.write_text("\n".join(lines) + "\n")
         print(f"Registered {name} in global index")
 
 
 def update_global_entry(project_ash: Path, now: datetime = None) -> None:
     """Update the Last Updated cell for a project in the global index."""
-    if not GLOBAL_ASH.exists():
+    if not GLOBAL_DEVME.exists():
         return
-    content = GLOBAL_ASH.read_text()
+    content = GLOBAL_DEVME.read_text()
     if str(project_ash) not in content:
         return
     timestamp = ts(now)
@@ -559,16 +556,16 @@ def update_global_entry(project_ash: Path, now: datetime = None) -> None:
             if len(parts) >= 5:
                 parts[-2] = f" {timestamp} "
                 lines[i] = "|".join(parts)
-    GLOBAL_ASH.write_text("\n".join(lines) + "\n")
+    GLOBAL_DEVME.write_text("\n".join(lines) + "\n")
 
 
 def list_registered_paths() -> list:
     """Return all companion file paths registered in the global index."""
-    if not GLOBAL_ASH.exists():
+    if not GLOBAL_DEVME.exists():
         return []
     paths = []
     in_index = False
-    for line in GLOBAL_ASH.read_text().splitlines():
+    for line in GLOBAL_DEVME.read_text().splitlines():
         if line.strip() == "## Project Index":
             in_index = True
             continue
@@ -1287,8 +1284,8 @@ def cmd_watch(args):
 
 # ── Subcommand: serve ────────────────────────────────────────────────────────
 
-_SERVE_HTML_PATH = ASH_DIR / "serve.html"
-_WIZARD_HTML_PATH = ASH_DIR / "wizard.html"
+_SERVE_HTML_PATH = DEVME_DIR / "serve.html"
+_WIZARD_HTML_PATH = DEVME_DIR / "wizard.html"
 
 
 def _read_bundled_asset(name: str) -> str | None:
@@ -1318,12 +1315,12 @@ def _read_asset(name: str) -> str | None:
 
 def ensure_runtime_assets(force: bool = False) -> list[Path]:
     """Ensure runtime HTML assets exist in ~/.devme/."""
-    ASH_DIR.mkdir(parents=True, exist_ok=True)
+    DEVME_DIR.mkdir(parents=True, exist_ok=True)
     written: list[Path] = []
     missing: list[str] = []
 
     for name in ("serve.html", "wizard.html"):
-        dest = ASH_DIR / name
+        dest = DEVME_DIR / name
         if dest.exists() and not force:
             continue
 
@@ -1400,10 +1397,10 @@ def _run_install(data: dict) -> dict:
         filename += ".md"
 
     config = {
-        "username": data.get("username", "me").strip() or "me",
+        "username": data.get("username", "you").strip() or "you",
         "filename": filename,
-        "hub_label": data.get("hub_label", "My Context Hub").strip()
-        or "My Context Hub",
+        "hub_label": data.get("hub_label", "Context Hub").strip()
+        or "Context Hub",
         "editor": data.get("editor", "code").strip() or "code",
         "timezone": data.get("timezone", "UTC").strip() or "UTC",
         "accent_color": data.get("accent_color", "#7b96e8").strip() or "#7b96e8",
@@ -1414,19 +1411,19 @@ def _run_install(data: dict) -> dict:
     cfg_path.write_text(json.dumps(config, indent=2) + "\n")
 
     # Reload module-level globals so subsequent requests use the new config
-    global CFG, ASH_DIR, MD_FILE, GLOBAL_ASH, _SERVE_HTML_PATH, _WIZARD_HTML_PATH
+    global CFG, DEVME_DIR, MD_FILE, GLOBAL_DEVME, _SERVE_HTML_PATH, _WIZARD_HTML_PATH
     CFG = _load_config()
-    ASH_DIR = Path(CFG["hub_dir"]).expanduser()
+    DEVME_DIR = Path(CFG["hub_dir"]).expanduser()
     MD_FILE = CFG["filename"]
-    GLOBAL_ASH = ASH_DIR / MD_FILE
-    _SERVE_HTML_PATH = ASH_DIR / "serve.html"
-    _WIZARD_HTML_PATH = ASH_DIR / "wizard.html"
+    GLOBAL_DEVME = DEVME_DIR / MD_FILE
+    _SERVE_HTML_PATH = DEVME_DIR / "serve.html"
+    _WIZARD_HTML_PATH = DEVME_DIR / "wizard.html"
 
     ensure_global_ash()
 
     # Write personalized QUICKSTART.md
     fn = MD_FILE
-    qs_path = ASH_DIR / "QUICKSTART.md"
+    qs_path = DEVME_DIR / "QUICKSTART.md"
     qs_path.write_text(
         f"# devme — Quick Start\n\n"
         f"Your companion filename is **`{fn}`**.\n"
@@ -1457,7 +1454,7 @@ def _run_install(data: dict) -> dict:
         f"README: https://github.com/err404memory/devme.md\n"
     )
 
-    return {"ok": True, "hub_path": str(GLOBAL_ASH), "filename": fn}
+    return {"ok": True, "hub_path": str(GLOBAL_DEVME), "filename": fn}
 
 
 _SERVE_SSE_QUEUES: list = []
@@ -1471,8 +1468,8 @@ def _serve_watcher():
     while True:
         time.sleep(1.5)
         paths = list_registered_paths()
-        if GLOBAL_ASH.exists():
-            paths = [GLOBAL_ASH] + [p for p in paths if p != GLOBAL_ASH]
+        if GLOBAL_DEVME.exists():
+            paths = [GLOBAL_DEVME] + [p for p in paths if p != GLOBAL_DEVME]
         for p in paths:
             try:
                 mtime = p.stat().st_mtime
@@ -1505,14 +1502,13 @@ def _make_handler():
 
             if p == "/":
                 cfg_path = Path.home() / ".devme" / "config.json"
-                legacy_cfg_path = Path.home() / ".ash" / "config.json"
-                configured = cfg_path.exists() or legacy_cfg_path.exists()
+                configured = cfg_path.exists()
                 if not configured and _WIZARD_HTML_PATH.exists():
                     self._redirect("/setup")
                 else:
-                    self._redirect(f"/view?path={GLOBAL_ASH}")
+                    self._redirect(f"/view?path={GLOBAL_DEVME}")
             elif p == "/view":
-                path = params.get("path", [str(GLOBAL_ASH)])[0]
+                path = params.get("path", [str(GLOBAL_DEVME)])[0]
                 html = _load_serve_html().replace("__CURRENT_PATH__", path)
                 self._send(200, "text/html; charset=utf-8", html.encode())
             elif p == "/raw":
@@ -1534,10 +1530,10 @@ def _make_handler():
             elif p == "/api/mesh":
                 paths = list_registered_paths()
                 non_hub = sorted(
-                    [x for x in paths if x != GLOBAL_ASH and x.exists()],
+                    [x for x in paths if x != GLOBAL_DEVME and x.exists()],
                     key=lambda x: str(x).lower(),
                 )
-                hub_list = [GLOBAL_ASH] if GLOBAL_ASH.exists() else []
+                hub_list = [GLOBAL_DEVME] if GLOBAL_DEVME.exists() else []
                 mesh = [
                     {
                         "name": x.parent.name if x.name == MD_FILE else x.stem,
@@ -1647,9 +1643,8 @@ def cmd_serve(args):
     print(f"devme serve  →  {url}")
     print("Watching all registered companion files. Ctrl+C to stop.")
     cfg_path = Path.home() / ".devme" / "config.json"
-    legacy_cfg_path = Path.home() / ".ash" / "config.json"
     wizard_exists = _WIZARD_HTML_PATH.exists()
-    configured = cfg_path.exists() or legacy_cfg_path.exists()
+    configured = cfg_path.exists()
     open_url = f"{url}/setup" if (not configured and wizard_exists) else url
     if not args.no_browser:
         threading.Timer(0.4, lambda: webbrowser.open(open_url)).start()
@@ -1667,11 +1662,11 @@ def cmd_rm(args):
     target = Path(args.path).expanduser().resolve()
     ash_path = target / MD_FILE if target.is_dir() else target
 
-    if not GLOBAL_ASH.exists():
+    if not GLOBAL_DEVME.exists():
         print("No global index found.", file=sys.stderr)
         sys.exit(1)
 
-    content = GLOBAL_ASH.read_text()
+    content = GLOBAL_DEVME.read_text()
     if str(ash_path) not in content:
         print(f"Not registered in global index: {ash_path}", file=sys.stderr)
         sys.exit(1)
@@ -1679,7 +1674,7 @@ def cmd_rm(args):
     # Remove every line in the global file that references this path
     lines = content.splitlines()
     new_lines = [l for l in lines if str(ash_path) not in l]
-    GLOBAL_ASH.write_text("\n".join(new_lines) + "\n")
+    GLOBAL_DEVME.write_text("\n".join(new_lines) + "\n")
     print(f"Removed from index: {ash_path}")
 
     if args.delete:

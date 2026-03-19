@@ -34,9 +34,6 @@ from pathlib import Path
 def _load_config() -> dict:
     defaults = {"vault_dir": str(Path.home() / "Documents" / "sessions")}
     cfg_path = Path.home() / ".devme" / "config.json"
-    legacy_cfg_path = Path.home() / ".ash" / "config.json"
-    if not cfg_path.exists() and legacy_cfg_path.exists():
-        cfg_path = legacy_cfg_path
     if cfg_path.exists():
         try:
             loaded = json.loads(cfg_path.read_text())
@@ -109,7 +106,7 @@ def build_prompt(tool: str, messages: list, meta: dict) -> str:
         sample = messages
 
     transcript = "\n\n---\n\n".join(sample)
-    return f"""You are summarizing a {tool} AI dev session for the developer's personal archive. Be specific and concrete — this is reference material they'll search later.
+    return f"""You are summarizing a {tool} AI development session for a searchable session archive. Be specific and concrete — this is reference material that should be easy to find later.
 
 Session metadata:
 - Tool: {tool}

@@ -749,13 +749,13 @@
         <div class="sidebar-mockup-icon">✦</div>
         <div class="sidebar-mockup-text">
           <div class="sidebar-mockup-name" id="mockup-name">you</div>
-          <div class="sidebar-mockup-label" id="mockup-label">My Context Hub</div>
+          <div class="sidebar-mockup-label" id="mockup-label">Context Hub</div>
         </div>
       </div>
 
       <div class="field">
         <label for="inp-hub-label">Sidebar title</label>
-        <input type="text" id="inp-hub-label" placeholder="My Context Hub" value="My Context Hub" autocomplete="off" spellcheck="false">
+        <input type="text" id="inp-hub-label" placeholder="Context Hub" value="Context Hub" autocomplete="off" spellcheck="false">
       </div>
     </div>
 
@@ -889,7 +889,7 @@
   const state = {
     filename:    'me.md',
     username:    '',
-    hub_label:   'My Context Hub',
+    hub_label:   'Context Hub',
     editor:      'code',
     timezone:    'UTC',
     accent_color: '#7b96e8',
@@ -1037,7 +1037,7 @@
 
     if (idx === 2) {
       state.username  = inpUsername.value.trim() || 'me';
-      state.hub_label = inpHubLabel.value.trim() || 'My Context Hub';
+      state.hub_label = inpHubLabel.value.trim() || 'Context Hub';
       return true;
     }
 
@@ -1079,7 +1079,7 @@
     const cfg = {
       username:    state.username  || 'me',
       filename:    state.filename  || 'me.md',
-      hub_label:   state.hub_label || 'My Context Hub',
+      hub_label:   state.hub_label || 'Context Hub',
       editor:      state.editor    || 'code',
       timezone:    state.timezone  || 'UTC',
       accent_color: state.accent_color || '#7b96e8',
@@ -1104,7 +1104,7 @@
     // Sync state from inputs
     state.filename    = inpFilename.value.trim() || 'me.md';
     state.username    = inpUsername.value.trim() || 'me';
-    state.hub_label   = inpHubLabel.value.trim() || 'My Context Hub';
+    state.hub_label   = inpHubLabel.value.trim() || 'Context Hub';
     state.editor      = inpEditorCmd.value.trim() || 'code';
     state.timezone    = inpTimezone.value.trim() || 'UTC';
     state.accent_color = inpColorHex.value.trim() || '#7b96e8';
@@ -1129,7 +1129,7 @@
 
   inpHubLabel.addEventListener('input', () => {
     const val = inpHubLabel.value.trim();
-    mockupLabel.textContent = val || 'My Context Hub';
+    mockupLabel.textContent = val || 'Context Hub';
   });
 
   /* ── Step 3: Editor buttons ───────────────────────────────────────────────── */
@@ -1206,7 +1206,7 @@
     const payload = {
       username:    state.username  || 'me',
       filename:    state.filename  || 'me.md',
-      hub_label:   state.hub_label || 'My Context Hub',
+      hub_label:   state.hub_label || 'Context Hub',
       editor:      state.editor    || 'code',
       timezone:    state.timezone  || 'UTC',
       accent_color: state.accent_color || '#7b96e8',

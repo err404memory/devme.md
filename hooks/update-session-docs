@@ -32,13 +32,10 @@ def _load_config() -> dict:
     defaults = {
         "filename":   "me.md",
         "hub_dir":    "~/.devme",
-        "hub_label":  "My Context Hub",
+        "hub_label":  "Context Hub",
         "username":   "you",
     }
     cfg_path = Path.home() / ".devme" / "config.json"
-    legacy_cfg_path = Path.home() / ".ash" / "config.json"
-    if not cfg_path.exists() and legacy_cfg_path.exists():
-        cfg_path = legacy_cfg_path
     if cfg_path.exists():
         try:
             loaded = json.loads(cfg_path.read_text())

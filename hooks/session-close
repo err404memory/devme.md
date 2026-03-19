@@ -19,7 +19,7 @@
 #   }
 
 LOG="$HOME/.logs/session-parser.log"
-THRESHOLD="${DEVME_SESSION_THRESHOLD:-${ASH_SESSION_THRESHOLD:-300}}"   # seconds; override via env var
+THRESHOLD="${DEVME_SESSION_THRESHOLD:-300}"   # seconds; override via env var
 
 PARSE_AI="$HOME/.local/bin/parse-ai-session"
 PARSE_GHOSTTY="$HOME/.local/bin/parse-ghostty-session"
@@ -59,9 +59,6 @@ _tool_path() {
     python3 -c "
 import json, os, sys
 cfg = os.path.expanduser('~/.devme/config.json')
-legacy_cfg = os.path.expanduser('~/.ash/config.json')
-if (not os.path.exists(cfg)) and os.path.exists(legacy_cfg):
-    cfg = legacy_cfg
 default = os.path.expanduser(sys.argv[2])
 try:
     d = json.load(open(cfg))

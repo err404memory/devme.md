@@ -210,8 +210,6 @@ The session detection window defaults to 300 seconds. Override with:
 export DEVME_SESSION_THRESHOLD=600   # 10 minutes
 ```
 
-For backward compatibility, `ASH_SESSION_THRESHOLD` is still accepted.
-
 ### Dolphin integration
 
 `hooks/devme-init` and `hooks/devme-open` are service menu helpers. They fork immediately so Dolphin doesn't freeze, use `notify-send` for desktop feedback, and resolve the `devme` binary from `$PATH`.
@@ -298,7 +296,7 @@ The AI Notes section automatically detects `CLAUDE.md`, session summary files, a
 | `notes_file` | `~/.devme/file-notes.json` | Where annotations are stored |
 | `vault_dir` | `~/Documents/sessions` | Where full session archives are saved by the hooks |
 | `server_prefix_local` | `""` | Local mount path for a remote filesystem (e.g. `~/server`) |
-| `server_prefix_remote` | `""` | Corresponding path on the remote machine (e.g. `/home/user`) |
+| `server_prefix_remote` | `""` | Corresponding path on the remote machine (e.g. `/srv/projects`) |
 | `icon_folder` | built-in SVG | Closed folder icon — any SVG `url()` or data URI |
 | `icon_folder_open` | built-in SVG | Open folder icon |
 | `ann_icon_color` | accent color | Color of the ✦ annotation icon |
@@ -350,6 +348,24 @@ Optional paid support and implementation services may be introduced in the futur
 If that would be useful, open an issue titled `commercial support interest`.
 
 Direct support links will be added here once funding channels are set up.
+
+---
+
+## Public Safety Check
+
+Run the repo audit before publishing or opening a PR:
+
+```bash
+./scripts/public-safety-audit.sh
+```
+
+If you want a local pre-commit guard for staged files:
+
+```bash
+./scripts/install-public-safety-hook.sh
+```
+
+The audit scans for generic home-path leaks, SSH/scp-style host references, obvious secret-key markers, and suspicious local artifact filenames. If a match is intentional, add a path glob to `.public-safety-allowlist`. If you want the audit to catch your own machine names or local path fragments, put custom regex patterns in `.public-safety-local-patterns` and keep that file local only.
 
 ---
 
