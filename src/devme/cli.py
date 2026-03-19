@@ -313,7 +313,7 @@ def collect_sibling_links(target_dir: Path) -> list:
 
 
 def build_navigation_lines(parents: list, children: list, siblings: list) -> list:
-    """Return the list items for a Navigation section."""
+    """Return a list of navigation items based on parents, children, and siblings."""
     lines = [f"- [{CFG['hub_label']}]({GLOBAL_DEVME})"]
     for name, path in parents:
         lines.append(f"- Up: [{name}]({path})")
@@ -470,7 +470,14 @@ def ensure_global_ash() -> None:
 
 
 def _migrate_global_index_to_table() -> None:
-    """One-time migration: convert list-style Project Index to table format."""
+    """Migrate Project Index from list to table format.
+    
+    This function checks if the GLOBAL_DEVME file exists and whether the Project
+    Index  is already in table format. If not, it reads the content, identifies the
+    section  containing the Project Index, and converts the list-style entries into
+    a structured  table format. The updated content is then written back to
+    GLOBAL_DEVME.
+    """
     if not GLOBAL_DEVME.exists():
         return
     content = GLOBAL_DEVME.read_text()
@@ -1314,7 +1321,16 @@ def _read_asset(name: str) -> str | None:
 
 
 def ensure_runtime_assets(force: bool = False) -> list[Path]:
-    """Ensure runtime HTML assets exist in ~/.devme/."""
+    """def ensure_runtime_assets(force: bool = False) -> list[Path]:
+    Ensure runtime HTML assets exist in ~/.devme/.  This function checks for the
+    existence of required HTML assets,  specifically "serve.html" and
+    "wizard.html", in the DEVME_DIR directory.  If the assets are missing or if the
+    `force` flag is set to True,  it attempts to read the asset content using the
+    _read_asset function  and writes the content to the destination. If any assets
+    cannot be  loaded, an error message is printed, and the program exits.
+    
+    Args:
+        force (bool): If True, forces the re-creation of assets even if they exist."""
     DEVME_DIR.mkdir(parents=True, exist_ok=True)
     written: list[Path] = []
     missing: list[str] = []
@@ -1389,7 +1405,18 @@ def _load_wizard_html() -> str:
 
 
 def _run_install(data: dict) -> dict:
-    """Write config and initialise ~/.devme/ from wizard POST data. Reloads module globals."""
+    """Write configuration and initialize ~/.devme/ from wizard POST data.
+    
+    This function processes the provided `data` dictionary to create a
+    configuration file at `~/.devme/config.json`. It ensures that the filename has
+    a `.md` extension, sets default values for various configuration options, and
+    writes a personalized `QUICKSTART.md` file. Additionally, it reloads module-
+    level globals to reflect the new configuration for subsequent requests.
+    
+    Args:
+        data (dict): A dictionary containing configuration data such as username,
+            filename, hub_label, editor, timezone, and accent_color.
+    """
     filename = data.get("filename", "me.md").strip()
     if not filename:
         filename = "me.md"
@@ -1462,6 +1489,14 @@ _SERVE_SSE_LOCK = __import__("threading").Lock()
 
 
 def _serve_watcher():
+    """Monitor file changes and notify registered paths.
+    
+    This function continuously checks for modifications in registered file paths at
+    regular intervals. It maintains a dictionary of modification times and compares
+    the current modification time with the previously stored time. If a change is
+    detected, it sends notifications to the appropriate queues while handling
+    potential exceptions gracefully.
+    """
     import time
 
     mtimes: dict = {}
@@ -1496,6 +1531,17 @@ def _make_handler():
             pass
 
         def do_GET(self):
+            """Handle HTTP GET requests for various endpoints.
+            
+            This function processes incoming GET requests by parsing the URL path and query
+            parameters.  It serves different content based on the path, including
+            redirecting to setup, serving HTML,  returning raw file data, and providing
+            JSON responses for registered paths and notes.  Error handling is implemented
+            for invalid paths and file access issues.
+            
+            Args:
+                self: The instance of the class handling the request.
+            """
             parsed = urllib.parse.urlparse(self.path)
             params = urllib.parse.parse_qs(parsed.query)
             p = parsed.path
@@ -1625,6 +1671,18 @@ def _make_handler():
 
 
 def cmd_serve(args):
+    """def cmd_serve(args):
+    Start a local HTTP server for development purposes.  This function initializes
+    a local HTTP server that serves files and  watches for changes in registered
+    companion files. It first ensures  that runtime assets are available, then
+    finds an available port by  checking the specified port and incrementing it if
+    necessary. A  separate thread is started to monitor the server, and the server
+    is launched to handle incoming requests. If the browser should be  opened, it
+    will navigate to the appropriate URL based on the  configuration status.
+    
+    Args:
+        args: Command line arguments containing the port and browser
+            options."""
     import http.server
     import socket
     import threading
@@ -1658,7 +1716,17 @@ def cmd_serve(args):
 
 
 def cmd_rm(args):
-    """Remove a companion file from the global index (and optionally delete it)."""
+    """Remove a companion file from the global index and optionally delete it.
+    
+    This function checks for the existence of a global index and verifies if the
+    specified companion file is registered. If it is, the function removes all
+    references to the file from the global index. If the `args.delete` flag is
+    set, it also deletes the companion file from the disk. Otherwise, it retains
+    the file and informs the user.
+    
+    Args:
+        args: Command line arguments containing the path and delete flag.
+    """
     target = Path(args.path).expanduser().resolve()
     ash_path = target / MD_FILE if target.is_dir() else target
 
