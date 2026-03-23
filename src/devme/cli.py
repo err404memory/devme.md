@@ -1389,7 +1389,18 @@ def _load_wizard_html() -> str:
 
 
 def _run_install(data: dict) -> dict:
-    """Write config and initialise ~/.devme/ from wizard POST data. Reloads module globals."""
+    """Write configuration and initialize ~/.devme/ from wizard POST data.
+    
+    This function processes the provided `data` dictionary to create a
+    configuration file at ~/.devme/config.json. It ensures that the necessary
+    directories exist and writes default values for various settings such as
+    username, filename, and editor. After writing the configuration, it reloads
+    module-level globals to reflect the new settings and generates a personalized
+    QUICKSTART.md file to guide the user in using the application.
+    
+    Args:
+        data (dict): A dictionary containing configuration data from the wizard POST.
+    """
     filename = data.get("filename", "me.md").strip()
     if not filename:
         filename = "me.md"
